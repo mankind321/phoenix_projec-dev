@@ -28,9 +28,14 @@ function createRlsClient(headers: Record<string, string>) {
 // ----------------------------------------------
 // ☁️ GCP Storage
 // ----------------------------------------------
+const credentials = JSON.parse(process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON!);
+
 const storage = new Storage({
-  projectId: process.env.GOOGLE_PROJECT_ID,
-  keyFilename: process.env.GOOGLE_APPLICATION_CREDENTIALS,
+  projectId: credentials.project_id,
+  credentials: {
+    client_email: credentials.client_email,
+    private_key: credentials.private_key,
+  },
 });
 
 const bucket = storage.bucket(process.env.GOOGLE_BUCKET_DOCUMENT!);
