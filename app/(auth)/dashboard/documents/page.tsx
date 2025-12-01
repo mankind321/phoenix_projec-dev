@@ -1,5 +1,5 @@
 "use client";
-import UploadConfigurationCard from "../../components/uploadconfigurationcard";
+import UploadConfigurationCard from "../../../components/uploadconfigurationcard";
 
 export default function Home() {
   return (

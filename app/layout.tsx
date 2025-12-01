@@ -11,9 +11,9 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body className="bg-background text-foreground m-0 p-0">
+      <body className="bg-background text-foreground">
         <SessionProviderWrapper>
-          <main className="m-0 p-0">{children}</main>
+          {children}
           <Toaster richColors position="top-center" />
         </SessionProviderWrapper>
       </body>

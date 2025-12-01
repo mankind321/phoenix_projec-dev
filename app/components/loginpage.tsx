@@ -8,7 +8,7 @@ import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
 import { Lock, LogIn, XCircle } from "lucide-react";
-import { toast } from "sonner"
+import { toast } from "sonner";
 
 export function LoginForm() {
   const [username, setUserName] = useState("");
@@ -16,52 +16,64 @@ export function LoginForm() {
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
 
+  // Reusable toast
+  const showErrorToast = (title: string, message: string) => {
+    toast.custom((id) => (
+      <div
+        className="bg-white border-1 border-red-500 text-red-500 p-6 rounded-lg text-lg shadow-lg w-sm"
+        onClick={() => toast.dismiss(id)}
+      >
+        <div className="flex items-center gap-2">
+          <div>
+            <XCircle className="w-10 h-10 mt-1 text-white bg-red-500 rounded-3xl" />
+          </div>
+          <div>
+            <h3 className="font-bold mb-0">{title}</h3>
+            <p>{message}</p>
+          </div>
+        </div>
+      </div>
+    ));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
 
     try {
-      // Sign in with NextAuth credentials provider
       const res = await signIn("credentials", {
         redirect: false,
         username,
         password,
       });
 
-      if (!res?.ok) {
-        //toast.error("Invalid credentials");
-        toast.custom((id) => (
-          <div className="bg-white border-1 border-red-500 text-red-500 p-6 rounded-lg text-lg shadow-lg w-sm" onClick={() => toast.dismiss(id)}>
+      // ---------------------------
+      // ❌ LOGIN FAILED
+      // ---------------------------
+      if (!res || !res.ok) {
+        // Custom backend error
+        if (res && res.error === "ACCOUNT_ALREADY_LOGGED_IN") {
+          showErrorToast("Login Rejected", "Account is already logged in.");
+          return;
+        }
 
-            <div className="flex items-center gap-2">
-              <div>
-                <XCircle className="w-10 h-10 mt-1 text-white bg-red-500 rounded-3xl" />
-              </div>
-              <div>
-                  <h3 className="font-bold mb-0">Error</h3>
-                  <p>Invalid Credentials</p>
-              </div>
-            </div>
-          </div>
-        ));
-        return; // stop further execution
+        // Default invalid credentials
+        showErrorToast("Error", "Invalid credentials");
+        return;
       }
 
-      // Fetch the session immediately after successful login
+      // ---------------------------
+      // ✔ LOGIN SUCCESS
+      // ---------------------------
       const session = await getSession();
-
       if (!session?.user) throw new Error("Session not found");
 
-      console.log(session);
-      // Redirect based on role
-      if (session.user.role === "Admin" || session.user.role === "Manager" ) router.push("/dashboard/main");
-      else router.push("/dashboard/main");
-
+      router.push("/dashboard/main");
       toast.success("Login Successfully");
 
     } catch (err) {
       console.error(err);
-      alert("Invalid username or password");
+      toast.error("Unexpected error occurred during login.");
     } finally {
       setIsLoading(false);
     }
@@ -96,6 +108,7 @@ export function LoginForm() {
                 className="h-11 w-full border border-shadow border-gray-300"
               />
             </div>
+
             <div className="space-y-2">
               <Label htmlFor="password">Password</Label>
               <Input
@@ -109,6 +122,7 @@ export function LoginForm() {
                 className="h-11 w-full border border-shadow border-gray-300"
               />
             </div>
+
             <Button
               type="submit"
               className="w-full h-11 bg-blue-600 text-white hover:bg-blue-400 hover:text-white"

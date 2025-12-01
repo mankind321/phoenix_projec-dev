@@ -1,6 +1,6 @@
 "use client";
 
-import SystemActivityLog from "../../components/systemlogsactivitiescard";
+import SystemActivityLog from "../../../components/systemlogsactivitiescard";
 
 export default function Home() {
   return (
