@@ -65,7 +65,6 @@ export const TopHeaderManager: React.FC = () => {
     };
 
     fetchAvatar();
-
     const interval = setInterval(fetchAvatar, 45 * 60 * 1000);
     return () => clearInterval(interval);
   }, [session?.user?.profileImageUrl]);
@@ -87,24 +86,25 @@ export const TopHeaderManager: React.FC = () => {
     .toUpperCase();
 
   // --------------------------------------------------
-  // Logout Handler (UPDATED)
+  // Logout Handler (FINAL VERSION)
   // --------------------------------------------------
   const handleLogout = async () => {
     try {
-      // 1️⃣ Update account status to offline
-      await fetch("/api/auth/update-status-offline", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          accountId: session?.user?.accountId,
-          username: session?.user?.username,
-        }),
+      const payload = JSON.stringify({
+        accountId: session?.user?.accountId,
+        username: session?.user?.username,
       });
 
-      // 2️⃣ Continue logout
+      // 1️⃣ Mark logout as intentional
       sessionStorage.setItem("isLoggingOut", "true");
+
+      // 2️⃣ Mark offline instantly using sendBeacon
+      navigator.sendBeacon("/api/auth/update-status-offline", payload);
+
+      // 3️⃣ Sign out user
       await signOut({ redirect: false });
 
+      // 4️⃣ Redirect to login
       router.replace("/login");
     } catch (err) {
       console.error("Logout error:", err);
@@ -126,7 +126,7 @@ export const TopHeaderManager: React.FC = () => {
 
   return (
     <aside className="sidebar-scroll h-screen w-64 bg-white border-r border-gray-200 flex flex-col">
-      
+
       {/* Logo */}
       <div className="flex items-center gap-3 px-5 py-5 border-b border-gray-200">
         <div className="w-12 h-12 bg-blue-600 rounded-md flex items-center justify-center">
@@ -210,6 +210,7 @@ export const TopHeaderManager: React.FC = () => {
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
+
     </aside>
   );
 };

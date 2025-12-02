@@ -33,6 +33,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
+
 import { ChangePasswordModal } from "@/app/components/changePasswordModal";
 
 export const TopHeaderAdmin: React.FC = () => {
@@ -65,7 +66,6 @@ export const TopHeaderAdmin: React.FC = () => {
     };
 
     fetchAvatar();
-
     const interval = setInterval(fetchAvatar, 45 * 60 * 1000);
     return () => clearInterval(interval);
   }, [session?.user?.profileImageUrl]);
@@ -87,24 +87,25 @@ export const TopHeaderAdmin: React.FC = () => {
     .toUpperCase();
 
   // --------------------------------------------------
-  // Logout Handler (UPDATED)
+  // Logout Handler (FINAL CLEAN VERSION)
   // --------------------------------------------------
   const handleLogout = async () => {
     try {
-      // 1️⃣ Call backend API to mark user offline
-      await fetch("/api/auth/update-status-offline", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          accountId: session?.user?.accountId,
-          username: session?.user?.username,
-        }),
+      const payload = JSON.stringify({
+        accountId: session?.user?.accountId,
+        username: session?.user?.username,
       });
 
-      // 2️⃣ Continue with logout
+      // 1️⃣ Mark logout as intentional (so layout won't show error toast)
       sessionStorage.setItem("isLoggingOut", "true");
+
+      // 2️⃣ Mark user offline instantly & reliably (sendBeacon survives fast tab close)
+      navigator.sendBeacon("/api/auth/update-status-offline", payload);
+
+      // 3️⃣ Sign out user
       await signOut({ redirect: false });
 
+      // 4️⃣ Go to login page
       router.replace("/login");
     } catch (err) {
       console.error("Logout error:", err);
@@ -127,6 +128,7 @@ export const TopHeaderAdmin: React.FC = () => {
 
   return (
     <aside className="sidebar-scroll h-screen w-64 bg-white border-r border-gray-200 flex flex-col">
+      
       {/* Logo */}
       <div className="flex items-center gap-3 px-5 py-5 border-b border-gray-200">
         <div className="w-12 h-12 bg-blue-600 rounded-md flex items-center justify-center">
@@ -163,7 +165,7 @@ export const TopHeaderAdmin: React.FC = () => {
         </ul>
       </nav>
 
-      {/* User Profile Bottom Section */}
+      {/* User Profile */}
       <div className="border-t border-gray-200 p-4">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -210,6 +212,7 @@ export const TopHeaderAdmin: React.FC = () => {
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
+
     </aside>
   );
 };

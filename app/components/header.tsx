@@ -86,24 +86,26 @@ export const TopHeader: React.FC = () => {
     .toUpperCase();
 
   // --------------------------------------------------
-  // Logout Handler (UPDATED TO SET OFFLINE)
+  // Logout Handler (CLEAN + RELIES ON LAYOUT)
   // --------------------------------------------------
   const handleLogout = async () => {
     try {
-      // 1️⃣ Update status to offline BEFORE logging out
-      await fetch("/api/auth/update-status-offline", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      // 1️⃣ Mark logout as intentional so layout does not show error toast
+      sessionStorage.setItem("isLoggingOut", "true");
+
+      // 2️⃣ Use beacon (fastest + survives immediate tab close)
+      navigator.sendBeacon(
+        "/api/auth/update-status-offline",
+        JSON.stringify({
           accountId: session?.user?.accountId,
           username: session?.user?.username,
-        }),
-      });
+        })
+      );
 
-      // 2️⃣ Continue with normal logout
-      sessionStorage.setItem("isLoggingOut", "true");
+      // 3️⃣ NextAuth logout
       await signOut({ redirect: false });
 
+      // 4️⃣ Redirect manually
       router.replace("/login");
     } catch (err) {
       console.error("Logout error:", err);

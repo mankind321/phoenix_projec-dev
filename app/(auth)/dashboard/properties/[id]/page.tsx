@@ -153,7 +153,6 @@ export default function PropertyViewPage({
                           placeholder="blur"
                           blurDataURL="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAQAAACENnwnAAAAD0lEQVR42mNgoBpgYGBgAAAAMgAB9O3bGAAAAABJRU5ErkJggg=="
                           priority={idx === 0}
-                          unoptimized
                         />
                       </DialogTrigger>
 

@@ -2,7 +2,7 @@
 "use client";
 
 import { ReactNode, useEffect, useRef } from "react";
-import { useSession } from "next-auth/react";
+import { useSession, signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
@@ -15,33 +15,31 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
   const { data: session, status } = useSession();
   const router = useRouter();
 
-  // Track if the user was previously authenticated
   const wasAuthenticated = useRef(false);
-
-  // Stores last known logged-in user safely (avoids "never" errors)
-  const lastUserRef = useRef<{
-    accountId: string;
-    username: string;
-  } | null>(null);
+  const lastUserRef = useRef<{ accountId: string; username: string } | null>(
+    null
+  );
 
   // ==========================================
   // 🔐 AUTH REDIRECT + STORE LAST USER
   // ==========================================
   useEffect(() => {
-    const isLoggingOut =
-      typeof window !== "undefined" &&
+    const intentionalLogout =
       sessionStorage.getItem("isLoggingOut") === "true";
 
+    // When login succeeds
     if (status === "authenticated" && session?.user) {
       wasAuthenticated.current = true;
+
       lastUserRef.current = {
         accountId: session.user.accountId,
         username: session.user.username,
       };
     }
 
+    // When session becomes unauthenticated
     if (status === "unauthenticated") {
-      if (!isLoggingOut) {
+      if (!intentionalLogout) {
         toast.error("Session expired or not logged in.");
       } else {
         sessionStorage.removeItem("isLoggingOut");
@@ -52,62 +50,82 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
   }, [status, session, router]);
 
   // ==========================================
-  // 🔵 MARK USER OFFLINE WHEN SESSION ENDS
+  // 🔵 MARK USER OFFLINE ONLY ON TRUE SESSION END
   // ==========================================
   useEffect(() => {
-    if (status === "unauthenticated" && wasAuthenticated.current && lastUserRef.current) {
-      fetch("/api/auth/update-status-offline", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(lastUserRef.current),
-      });
+    const intentionalLogout =
+      sessionStorage.getItem("isLoggingOut") === "true";
+
+    if (
+      status === "unauthenticated" &&
+      wasAuthenticated.current === true &&
+      !intentionalLogout &&
+      lastUserRef.current
+    ) {
+      navigator.sendBeacon(
+        "/api/auth/update-status-offline",
+        JSON.stringify(lastUserRef.current)
+      );
     }
   }, [status]);
 
   // ==========================================
-  // 🔵 OFFLINE TRACKING (TAB CLOSE + INACTIVITY)
+  // 🔵 TAB CLOSE LOGOUT — ONLY CLOSE, NOT SWITCH TABS
   // ==========================================
   useEffect(() => {
     if (!session?.user) return;
 
-    const { accountId, username } = session.user;
+    const payload = JSON.stringify({
+      accountId: session.user.accountId,
+      username: session.user.username,
+    });
 
-    const markOffline = async () => {
-      try {
-        await fetch("/api/auth/update-status-offline", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ accountId, username }),
-        });
-      } catch (err) {
-        console.warn("⚠ Failed to update offline status:", err);
+    const isIntentionalLogout = () =>
+      sessionStorage.getItem("isLoggingOut") === "true";
+
+    const handleBeforeUnload = () => {
+      if (!isIntentionalLogout()) {
+        navigator.sendBeacon("/api/auth/update-status-offline", payload);
       }
     };
 
-    // Mark offline when browser/tab closed
-    window.addEventListener("beforeunload", markOffline);
+    // Fires ONLY on tab close or browser close
+    window.addEventListener("beforeunload", handleBeforeUnload);
 
-    // Inactivity timer (10 minutes)
-    let inactivityTimer: any;
-    const resetTimer = () => {
-      clearTimeout(inactivityTimer);
-      inactivityTimer = setTimeout(() => markOffline(), 10 * 60 * 1000);
-    };
-
-    const events = ["mousemove", "keydown", "scroll", "click"];
-    events.forEach((ev) => window.addEventListener(ev, resetTimer));
-
-    resetTimer();
-
-    return () => {
-      window.removeEventListener("beforeunload", markOffline);
-      events.forEach((ev) => window.removeEventListener(ev, resetTimer));
-      clearTimeout(inactivityTimer);
-    };
+    return () =>
+      window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [session]);
 
   // ==========================================
-  // Prevent UI from rendering if session missing
+  // 🔵 AUTO INACTIVITY LOGOUT (from AutoLogout)
+  // ==========================================
+  useEffect(() => {
+    if (!session?.user) return;
+
+    const interval = setInterval(async () => {
+      const inactive = sessionStorage.getItem("user-inactive") === "true";
+      if (!inactive) return;
+
+      // Mark user offline
+      navigator.sendBeacon(
+        "/api/auth/update-status-offline",
+        JSON.stringify({
+          accountId: session.user.accountId,
+          username: session.user.username,
+        })
+      );
+
+      // Then log out
+      sessionStorage.setItem("isLoggingOut", "true");
+      await signOut({ redirect: false });
+      router.replace("/login");
+    }, 2000);
+
+    return () => clearInterval(interval);
+  }, [session, router]);
+
+  // ==========================================
+  // Block rendering until session is ready
   // ==========================================
   if (!session?.user) return null;
 
@@ -115,7 +133,7 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
     <div className="min-h-screen bg-white">
       <AutoLogout />
 
-      {/* PERSISTENT SIDEBAR + HEADER */}
+      {/* SIDEBAR + HEADER */}
       <div className="sidebar-scroll w-64 h-screen fixed left-0 top-0 border-r border-gray-200 bg-white">
         {session.user.role === "Admin" ? (
           <TopHeaderAdmin />
@@ -126,7 +144,7 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
         )}
       </div>
 
-      {/* CONTENT AREA */}
+      {/* CONTENT */}
       <main className="ml-64 p-6 bg-white">{children}</main>
     </div>
   );
