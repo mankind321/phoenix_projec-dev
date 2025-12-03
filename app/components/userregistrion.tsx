@@ -362,10 +362,189 @@ const UserRegistrationForm: React.FC = () => {
 
         {/* PERSONAL INFORMATION */}
         <div className="space-y-4">
-          <div className="text-lg font-semibold border-b pb-2">Personal Information</div>
+          <div className="text-lg font-semibold border-b pb-2">
+            Personal Information
+          </div>
 
-          {/* ... (ALL YOUR ORIGINAL FORM FIELDS REMAIN UNCHANGED) ... */}
-          {/* I kept everything exactly as-is to avoid breaking layout */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* First Name */}
+            <div>
+              <Label htmlFor="firstName">First Name</Label>
+              <div className="relative">
+                <Input
+                  id="firstName"
+                  name="firstName"
+                  placeholder="First Name"
+                  value={formData.firstName}
+                  onChange={handleUserChange}
+                  required
+                  className="pl-10"
+                />
+                <User className="absolute left-3 top-3 h-4 w-4 text-gray-400 mt-2" />
+              </div>
+            </div>
+
+            {/* Middle Name */}
+            <div>
+              <Label htmlFor="middleName">Middle Name</Label>
+              <Input
+                id="middleName"
+                name="middleName"
+                placeholder="Middle Name"
+                value={formData.middleName}
+                onChange={handleUserChange}
+              />
+            </div>
+
+            {/* Last Name */}
+            <div>
+              <Label htmlFor="lastName">Last Name</Label>
+              <Input
+                id="lastName"
+                name="lastName"
+                placeholder="Last Name"
+                value={formData.lastName}
+                onChange={handleUserChange}
+                required
+              />
+            </div>
+          </div>
+
+          {/* DOB + Gender */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <Label htmlFor="dateOfBirth">Date of Birth</Label>
+              <div className="relative">
+                <Input
+                  type="date"
+                  id="dateOfBirth"
+                  name="dateOfBirth"
+                  value={formData.dateOfBirth}
+                  onChange={handleUserChange}
+                  required
+                  className="pl-10"
+                />
+                <Calendar className="absolute left-3 top-3 h-4 w-4 text-gray-400 mt-2" />
+              </div>
+            </div>
+
+            <div>
+              <Label htmlFor="gender">Gender</Label>
+              <select
+                id="gender"
+                name="gender"
+                value={formData.gender}
+                onChange={handleUserChange}
+                required
+                className="w-full border border-gray-300 rounded-md px-3 py-2 mt-2 focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="">Select Gender</option>
+                <option value="Male">Male</option>
+                <option value="Female">Female</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Contact Info */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Email */}
+            <div>
+              <Label htmlFor="email">Email</Label>
+              <div className="relative">
+                <Input
+                  type="email"
+                  id="email"
+                  name="email"
+                  placeholder="Email"
+                  value={formData.email}
+                  onChange={handleUserChange}
+                  required
+                  className="pl-10"
+                />
+                <Mail className="absolute left-3 top-3 h-4 w-4 text-gray-400 mt-2" />
+              </div>
+            </div>
+
+            {/* Mobile */}
+            <div>
+              <Label htmlFor="mobile">Mobile Number</Label>
+              <div className="relative">
+                <Input
+                  type="tel"
+                  id="mobile"
+                  name="mobile"
+                  placeholder="Mobile Number"
+                  value={formData.mobile}
+                  onChange={handleUserChange}
+                  required
+                  className="pl-10"
+                />
+                <Phone className="absolute left-3 top-3 h-4 w-4 text-gray-400 mt-2" />
+              </div>
+            </div>
+          </div>
+
+          {/* Address */}
+          <div>
+            <Label htmlFor="address">Residential Address</Label>
+            <Input
+              id="address"
+              name="address"
+              placeholder="Street, City, State, ZIP"
+              value={formData.address}
+              onChange={handleUserChange}
+              required
+            />
+          </div>
+        </div>
+
+        {/* PROFESSIONAL INFO */}
+        <div className="space-y-4">
+          <div className="text-lg font-semibold border-b pb-2">
+            Professional Information
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* License Number */}
+            <div>
+              <Label htmlFor="licenseNumber">License Number</Label>
+              <Input
+                id="licenseNumber"
+                name="licenseNumber"
+                placeholder="License Number"
+                value={formData.licenseNumber}
+                onChange={handleUserChange}
+                required
+              />
+            </div>
+
+            {/* Issued By */}
+            <div>
+              <Label htmlFor="licenseIssuedBy">License Issued By</Label>
+              <Input
+                id="licenseIssuedBy"
+                name="licenseIssuedBy"
+                placeholder="City / State / Authority"
+                value={formData.licenseIssuedBy}
+                onChange={handleUserChange}
+                required
+              />
+            </div>
+
+            {/* Expiration */}
+            <div>
+              <Label htmlFor="licenseExpiration">License Expiration</Label>
+              <Input
+                type="date"
+                id="licenseExpiration"
+                name="licenseExpiration"
+                value={formData.licenseExpiration}
+                onChange={handleUserChange}
+                required
+              />
+            </div>
+          </div>
         </div>
 
         {/* ACCOUNT REGISTRATION */}

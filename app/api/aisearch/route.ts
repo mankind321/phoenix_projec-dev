@@ -69,9 +69,48 @@ function detectSearchTarget(prompt: string): "property" | "lease" | "document" |
 async function extractParams(prompt: string) {
   const model = genAI.getGenerativeModel({ model: MODEL });
 
-  const instruction = `
-Return ONLY valid JSON.
-Detect if query contains city or US state.
+ const instruction = `
+You are an expert real-estate query parser. Extract the user's intent and convert it into structured JSON.
+
+CRITICAL RULES:
+
+1. LOCATION DETECTION (EXTREMELY IMPORTANT)
+- ALWAYS extract a location when ANY named place, building, or establishment is mentioned.
+- Treat ANY proper noun referring to a place as a valid location.
+- Examples of location types (NOT exhaustive):
+  • malls and shopping centers
+  • hospitals, clinics, and medical centers
+  • restaurants and fast-food chains
+  • hotels, resorts, casinos, inns
+  • airports, train stations, bus terminals
+  • schools, universities, academies
+  • stadiums, arenas, convention centers
+  • government buildings, embassies, city halls
+  • churches, temples, mosques
+  • parks, zoos, museums, attractions
+  • office buildings, company headquarters
+  • residential subdivisions, condos, apartments
+  • ANY other named establishment or landmark
+
+- NEVER return null for location if the text contains ANY named establishment or place.
+- Infer city/state if well-known (e.g., “Disneyland” → Anaheim, CA).
+
+2. RADIUS CONVERSION
+Convert radius mentioned by user into meters:
+- “500m”, “500 meters” → 500
+- “1 km”, “1 kilometer” → 1000
+- “1 mile”, “1 mi” → 1609
+- If not mentioned, return null.
+
+3. PROPERTY TYPE EXTRACTION
+Recognize common property categories:
+- Residential, Industrial, Commercial, Retail, Office, Warehouse, Land, Mixed-use
+- If not found, return null.
+
+4. PRICE EXTRACTION
+Extract min_price and max_price when mentioned.
+
+Return ONLY valid JSON in this shape:
 
 {
   "location": string | null,
@@ -85,6 +124,7 @@ Detect if query contains city or US state.
 
 User text: "${prompt}"
 `;
+
 
   const result = await model.generateContent(instruction);
   let text = result.response.text().trim();
