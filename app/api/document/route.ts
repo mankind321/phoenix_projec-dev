@@ -32,7 +32,7 @@ const ALLOWED_SORT_FIELDS = new Set([
 
 export async function GET(req: Request) {
   try {
-    // 1️⃣ Validate session — every authenticated user can view
+    // 1️⃣ Validate session
     const session = await getServerSession(authOptions);
     const user = session?.user;
 
@@ -43,7 +43,7 @@ export async function GET(req: Request) {
       );
     }
 
-    // 2️⃣ Build RLS headers for Supabase policies
+    // 2️⃣ Build RLS headers
     const rlsHeaders = {
       "x-app-role": user.role,
       "x-user-id": user.id,
@@ -51,21 +51,30 @@ export async function GET(req: Request) {
     };
 
     const supabase = createRlsClient(rlsHeaders);
-
     const { searchParams } = new URL(req.url);
 
+    // ----------------------------------
     // Pagination
-    const page = Number(searchParams.get("page") || 1);
-    const limit = Number(searchParams.get("pageSize") || 10);
+    // ----------------------------------
+    const page = Math.max(1, Number(searchParams.get("page") || 1));
+    const limit = Math.max(1, Number(searchParams.get("pageSize") || 10));
     const offset = (page - 1) * limit;
 
+    // ----------------------------------
     // Filters
+    // ----------------------------------
     const search = (searchParams.get("search") || "").trim();
     const propertyName = searchParams.get("propertyName") || "";
     const leaseTenant = searchParams.get("leaseTenant") || "";
     const docType = searchParams.get("docType") || "";
 
+    // ✅ Date filters (YYYY-MM-DD)
+    const dateFrom = searchParams.get("dateFrom");
+    const dateTo = searchParams.get("dateTo");
+
+    // ----------------------------------
     // Sorting
+    // ----------------------------------
     const sortField = searchParams.get("sortField") || "uploaded_on";
     const sortOrder =
       searchParams.get("sortOrder")?.toLowerCase() === "asc" ? "asc" : "desc";
@@ -73,27 +82,29 @@ export async function GET(req: Request) {
       ? sortField
       : "uploaded_on";
 
-    // 3️⃣ Base Query (RLS enforces visibility)
+    // ----------------------------------
+    // Base Query (RLS enforced)
+    // ----------------------------------
     let query = supabase
       .from("document_user")
       .select("*", { count: "exact" });
 
-    // Doc type filter
+    // ----------------------------------
+    // Filters
+    // ----------------------------------
+
     if (docType && docType !== "all") {
       query = query.eq("doc_type", docType);
     }
 
-    // Property filter
     if (propertyName.trim()) {
       query = query.ilike("property_name", `%${propertyName}%`);
     }
 
-    // Tenant filter
     if (leaseTenant.trim()) {
       query = query.ilike("lease_tenant", `%${leaseTenant}%`);
     }
 
-    // Global search
     if (search) {
       const term = `%${search}%`;
       query = query.or(
@@ -108,12 +119,27 @@ export async function GET(req: Request) {
       );
     }
 
-    // Sorting & pagination
+    // ----------------------------------
+    // ✅ Date Range Filter (NEW)
+    // ----------------------------------
+    if (dateFrom) {
+      query = query.gte("uploaded_on", `${dateFrom}T00:00:00`);
+    }
+
+    if (dateTo) {
+      query = query.lte("uploaded_on", `${dateTo}T23:59:59.999`);
+    }
+
+    // ----------------------------------
+    // Sorting & Pagination (LAST)
+    // ----------------------------------
     query = query
       .order(sortKey, { ascending: sortOrder === "asc" })
       .range(offset, offset + limit - 1);
 
-    // 4️⃣ Execute
+    // ----------------------------------
+    // Execute
+    // ----------------------------------
     const { data, count, error } = await query;
 
     if (error) {
@@ -126,19 +152,23 @@ export async function GET(req: Request) {
 
     const totalPages = count ? Math.ceil(count / limit) : 1;
 
-    // 5️⃣ Audit Trail
+    // ----------------------------------
+    // Audit Trail
+    // ----------------------------------
     await logAuditTrail({
       userId: user.id,
       username: user.username,
       role: user.role,
       actionType: "VIEW",
       tableName: "document_user",
-      description: `Viewed document list`,
+      description: "Viewed document list",
       ipAddress: req.headers.get("x-forwarded-for") ?? "N/A",
       userAgent: req.headers.get("user-agent") ?? "Unknown",
     });
 
-    // 6️⃣ Return Response
+    // ----------------------------------
+    // Response
+    // ----------------------------------
     return NextResponse.json({
       success: true,
       documents: data ?? [],
@@ -150,7 +180,10 @@ export async function GET(req: Request) {
   } catch (err: any) {
     console.error("API Error:", err);
     return NextResponse.json(
-      { success: false, message: err.message || "Unexpected server error" },
+      {
+        success: false,
+        message: err.message || "Unexpected server error",
+      },
       { status: 500 }
     );
   }

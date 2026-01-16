@@ -116,11 +116,11 @@ export const TopHeaderAdmin: React.FC = () => {
   // Navigation Items
   // --------------------------------------------------
   const navItems = [
-    { label: "Dashboard", path: "/dashboard/main", icon: <CircleGauge className="w-4 h-4" /> },
-    { label: "Properties", path: "/dashboard/properties", icon: <Home className="w-4 h-4" /> },
+    { label: "Property Search", path: "/dashboard/properties", icon: <Home className="w-4 h-4" /> },
     { label: "Tenants", path: "/dashboard/leases", icon: <ClipboardList className="w-4 h-4" /> },
-    { label: "Broker", path: "/dashboard/contact", icon: <Contact className="w-4 h-4" /> },
+    { label: "Contacts", path: "/dashboard/contact", icon: <Contact className="w-4 h-4" /> },
     { label: "Documents", path: "/dashboard/documents", icon: <FileText className="w-4 h-4" /> },
+    { label: "Statistics", path: "/dashboard/main", icon: <CircleGauge className="w-4 h-4" /> },
     { label: "Review", path: "/dashboard/review", icon: <View className="w-4 h-4" /> },
     { label: "Audit Trail", path: "/dashboard/audit-trail", icon: <Activity className="w-4 h-4" /> },
     { label: "Users", path: "/dashboard/users", icon: <Users className="w-4 h-4" /> },
@@ -132,10 +132,12 @@ export const TopHeaderAdmin: React.FC = () => {
       {/* Logo */}
       <div className="flex items-center gap-3 px-5 py-5 border-b border-gray-200">
         <div className="w-12 h-12 bg-blue-600 rounded-md flex items-center justify-center">
-          <Building2 className="w-8 h-8 text-white" />
+          <div className="m-6">
+            <Building2 className="w-10 h-10 text-white" />
+          </div>
         </div>
         <div className="flex flex-col leading-tight">
-          <h1 className="text-lg font-semibold text-black">Phoenix Project</h1>
+          <h1 className="text-lg font-semibold text-black">Commerical Property Database</h1>
           <span className="text-xs text-gray-600">Real Property Management</span>
         </div>
       </div>

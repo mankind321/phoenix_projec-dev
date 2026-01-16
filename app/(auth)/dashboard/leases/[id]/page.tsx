@@ -107,7 +107,7 @@ export default function LeaseViewPage({
       <div className="text-center space-y-2 mb-5">
         <h1 className="text-3xl font-semibold text-gray-900 flex items-center justify-center gap-2">
           <FileText className="w-7 h-7 text-blue-600" />
-          Tenant Contract Information
+          Tenant Lease Information
         </h1>
       </div>
 
@@ -119,7 +119,6 @@ export default function LeaseViewPage({
           <Grid2>
             <InfoItem label="Tenant" value={lease.tenant} />
             <InfoItem label="Landlord" value={lease.landlord} />
-            <InfoItem label="Status" value={lease.status} />
           </Grid2>
         </InfoSection>
 
@@ -147,9 +146,13 @@ export default function LeaseViewPage({
           <Grid2>
             <InfoItem label="Price" value={formatUSD(lease.price)} />
 
-            <InfoItem label="Annual Rent" value={formatUSD(lease.annual_rent)} />
+            <InfoItem label="Current Annual Rent" value={formatUSD(lease.annual_rent)} />
 
-            <InfoItem label="Rent PSF" value={formatUSD(lease.rent_psf)} />
+            <InfoItem label="Base Rent PSF" value={formatUSD(lease.rent_psf)} />
+
+            <InfoItem label="Pass-TMRU (NNN) PSF" value={formatUSD(lease.pass_tmru)} />
+
+            <InfoItem label="Net Operating Income (NOI)" value={formatUSD(lease.noi)} />
           </Grid2>
         </InfoSection>
 
@@ -161,7 +164,6 @@ export default function LeaseViewPage({
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Relationship</TableHead>
                 <TableHead>Listing Company</TableHead>
                 <TableHead>Broker</TableHead>
                 <TableHead>Phone</TableHead>
@@ -174,7 +176,6 @@ export default function LeaseViewPage({
             <TableBody>
               {contacts.map((c: any) => (
                 <TableRow key={c.contact_assignment_id}>
-                  <TableCell>{c.relationship || "—"}</TableCell>
                   <TableCell>{c.listing_company || "—"}</TableCell>
                   <TableCell>{c.broker_name || "—"}</TableCell>
                   <TableCell>{c.phone || "—"}</TableCell>

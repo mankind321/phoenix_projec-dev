@@ -6,12 +6,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "@/components/ui/tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 import {
   Table,
@@ -30,6 +25,7 @@ import {
   Info,
   MapPinned,
   Users,
+  Download,
 } from "lucide-react";
 
 import Image from "next/image";
@@ -61,6 +57,10 @@ interface PropertyData {
     file_url: string;
     doc_type: string;
   }[];
+  documentFiles: {
+    file_url: string;
+    doc_type: string;
+  };
   contacts: any[]; // NEW
 }
 
@@ -96,7 +96,9 @@ export default function PropertyViewPage({
   }, [propertyId]);
 
   if (loading)
-    return <p className="text-center mt-10 text-gray-600">Loading property...</p>;
+    return (
+      <p className="text-center mt-10 text-gray-600">Loading property...</p>
+    );
 
   if (!data)
     return (
@@ -105,7 +107,7 @@ export default function PropertyViewPage({
       </p>
     );
 
-  const { property, leases, documents, contacts } = data;
+  const { property, leases, documents, documentFiles, contacts } = data;
 
   return (
     <div className="w-11/12 mx-auto mt-10 space-y-10">
@@ -190,6 +192,26 @@ export default function PropertyViewPage({
           <InfoItem label="Type" value={property.type} />
           <InfoItem label="Landlord" value={property.landlord} />
           <InfoItem label="Status" value={property.status} />
+          <div>
+            {documentFiles.file_url ? (
+              <Button
+                onClick={() =>
+                  window.open(
+                    `/api/gcp/download?path=${encodeURIComponent(
+                      documentFiles.file_url
+                    )}`,
+                    "_blank"
+                  )
+                }
+                className="bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-2 text-lg"
+              >
+                <Download className="w-15 h-15" />
+                Download Property Brochure
+              </Button>
+            ) : (
+              <p className="text-gray-500">No files uploaded.</p>
+            )}
+          </div>
         </Grid2>
       </InfoSection>
 
@@ -378,18 +400,14 @@ function InfoSection({
         {title}
       </h3>
 
-      <div className="p-5 border rounded-xl bg-white shadow-sm">
-        {children}
-      </div>
+      <div className="p-5 border rounded-xl bg-white shadow-sm">{children}</div>
     </div>
   );
 }
 
 function Grid2({ children }: { children: React.ReactNode }) {
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-      {children}
-    </div>
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">{children}</div>
   );
 }
 

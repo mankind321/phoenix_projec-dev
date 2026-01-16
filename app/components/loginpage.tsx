@@ -68,7 +68,7 @@ export function LoginForm() {
       const session = await getSession();
       if (!session?.user) throw new Error("Session not found");
 
-      router.push("/dashboard/main");
+      router.push("/dashboard/properties");
       toast.success("Login Successfully");
 
     } catch (err) {
@@ -88,7 +88,7 @@ export function LoginForm() {
               <Lock className="w-7 h-7 text-primary-foreground" />
             </div>
           </div>
-          <CardTitle>Welcome Back</CardTitle>
+          <CardTitle>Welcome User</CardTitle>
           <CardDescription>
             Enter your credentials to access your account
           </CardDescription>

@@ -246,7 +246,7 @@ export default function DashboardClient() {
         <div>
           <div className="flex items-center gap-2">
             <CircleGauge className="w-6 h-6 text-gray-700" />
-            <h2 className="text-xl font-semibold text-gray-800">Dashboard</h2>
+            <h2 className="text-xl font-semibold text-gray-800">Statistics</h2>
           </div>
           <p className="text-sm text-gray-500">
             Live analytics

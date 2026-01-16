@@ -300,7 +300,7 @@ export default function PropertyCardTable() {
         <div>
           <div className="flex items-center gap-2">
             <Building className="w-6 h-6 text-gray-700" />
-            <h2 className="text-xl font-semibold">Property Listings</h2>
+            <h2 className="text-xl font-semibold">Search Listings</h2>
           </div>
           <p className="text-sm text-gray-500">
             View and search available properties.

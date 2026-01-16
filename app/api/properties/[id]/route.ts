@@ -29,7 +29,9 @@ function createRlsClient(headers: Record<string, string>) {
 // ----------------------------------------------
 // ☁️ GCP STORAGE + SIGNED URL HELPER
 // ----------------------------------------------
-const credentials = JSON.parse(process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON!);
+const credentials = JSON.parse(
+  process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON!
+);
 
 const storage = new Storage({
   projectId: credentials.project_id,
@@ -154,6 +156,25 @@ export async function GET(
     );
 
     // ----------------------------------------------
+    // 7️⃣ Fetch ONLY images from document table
+    // ----------------------------------------------
+    const { data: documentFiles, error: documentFilesError } = await supabase
+      .from("document")
+      .select("file_url, doc_type")
+      .eq("property_id", propertyId)
+      .in("doc_type", ["Brochure", "Property Brochure"])
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .single(); // 👈 MUST be called
+
+    if (documentFilesError) throw documentFilesError;
+
+    const signedDocumentFiles = {
+      ...documentFiles,
+      file_url: await getSignedUrl(documentFiles.file_url),
+    };
+
+    // ----------------------------------------------
     // 9️⃣ Audit Log
     // ----------------------------------------------
     await logAuditTrail({
@@ -179,6 +200,7 @@ export async function GET(
           expired: expiredLeases,
         },
         documents: signedDocuments,
+        documentFiles: signedDocumentFiles,
         contacts: contacts,
       },
     });

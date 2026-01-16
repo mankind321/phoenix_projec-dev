@@ -310,7 +310,7 @@ export default function ContactTable() {
           />
 
           <Button
-            className="bg-blue-600 text-white hover:bg-blue-700"
+            className="bg-blue-600 text-white hover:bg-blue-700 mt-2"
             onClick={() => router.push("/dashboard/contact/add")}
           >
             <Plus size={18} /> Add Contact

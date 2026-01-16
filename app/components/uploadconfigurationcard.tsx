@@ -41,10 +41,11 @@ import {
 } from "@tanstack/react-table";
 
 const documentTypes = [
-  "Lease Contract",
   "Property Brochure",
-  "Image",
-  "Other Documents",
+  "Offering Memorandum",
+  "Rent Roll",
+  "Site Plan",
+  "Others",
 ];
 
 export default function DocumentUploadSection() {
@@ -67,6 +68,14 @@ export default function DocumentUploadSection() {
 
   const [docType, setDocType] = useState("");
 
+  // Draft (UI only)
+  const [draftDateFrom, setDraftDateFrom] = useState("");
+  const [draftDateTo, setDraftDateTo] = useState("");
+
+  // Applied (sent to BE)
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+
   // Disable uploading if user already has 10 documents stored
   const reachedLimit = files.length >= 10;
 
@@ -82,11 +91,21 @@ export default function DocumentUploadSection() {
     "text/csv",
   ];
 
+  const FILENAME_REGEX = /^[a-zA-Z0-9]+_[a-zA-Z0-9]+\.[a-zA-Z0-9]+$/;
+
+  const isValidFileName = (name: string) => FILENAME_REGEX.test(name);
+
+  const showInvalidFilenameToast = (name: string) => {
+    toast.error("Invalid filename", {
+      description: `"${name}" must follow: first_second.filetype`,
+    });
+  };
+
   // ===============================
   // 📌 UPLOAD LOGIC (UNCHANGED)
   // ===============================
 
-  function addFiles(selected: File[]) {
+  /*function addFiles(selected: File[]) {
     const valid = selected.filter((f) => allowedMimeTypes.includes(f.type));
 
     if (valid.length !== selected.length) {
@@ -103,11 +122,57 @@ export default function DocumentUploadSection() {
     }
 
     setFiles(total);
+  }*/
+
+  function addFiles(selected: File[]) {
+    const validFiles: File[] = [];
+    let hasInvalidName = false;
+
+    selected.forEach((file) => {
+      if (!isValidFileName(file.name)) {
+        hasInvalidName = true;
+        showInvalidFilenameToast(file.name);
+        return;
+      }
+
+      if (!allowedMimeTypes.includes(file.type)) {
+        toast.warning(`File type not allowed: ${file.name}`);
+        return;
+      }
+
+      validFiles.push(file);
+    });
+
+    if (!validFiles.length) return;
+
+    const total = [...files, ...validFiles];
+
+    if (total.length > maxFiles) {
+      toast.warning(`Max ${maxFiles} files allowed`);
+      setFiles(total.slice(0, maxFiles));
+      return;
+    }
+
+    setFiles(total);
   }
 
-  function handleFileInput(e: React.ChangeEvent<HTMLInputElement>) {
+  /*function handleFileInput(e: React.ChangeEvent<HTMLInputElement>) {
     if (e.target.files) addFiles(Array.from(e.target.files));
+  }*/
+
+  function handleFileInput(e: React.ChangeEvent<HTMLInputElement>) {
+    if (!e.target.files) return;
+
+    addFiles(Array.from(e.target.files));
+
+    // ✅ allow re-selecting same file
+    e.target.value = "";
   }
+
+  /*function handleDrop(e: React.DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    addFiles(Array.from(e.dataTransfer.files));
+  }*/
 
   function handleDrop(e: React.DragEvent<HTMLDivElement>) {
     e.preventDefault();
@@ -173,24 +238,29 @@ export default function DocumentUploadSection() {
   const loadDocuments = useCallback(async () => {
     setLoadingList(true);
 
-    try {
-      const res = await fetch(
-        `/api/document?search=${encodeURIComponent(
-          search
-        )}&page=${page}&pageSize=${pageSize}`
-      );
+    const params = new URLSearchParams({
+      search,
+      page: String(page),
+      pageSize: String(pageSize),
+    });
 
+    if (dateFrom) params.append("dateFrom", dateFrom);
+    if (dateTo) params.append("dateTo", dateTo);
+
+    try {
+      const res = await fetch(`/api/document?${params.toString()}`);
       const data = await res.json();
+
       if (!data.success) throw new Error(data.message);
 
       setDocuments(data.documents);
       setTotal(data.total);
-    } catch (err) {
+    } catch {
       toast.error("Failed to load document list");
     } finally {
       setLoadingList(false);
     }
-  }, [search, page]);
+  }, [search, page, dateFrom, dateTo]);
 
   useEffect(() => {
     loadDocuments();
@@ -353,6 +423,10 @@ export default function DocumentUploadSection() {
 
             {/* Document Type Dropdown */}
             <div>
+              <p className="text-xs text-gray-400 mt-2">
+                Filename format required: <code>first_second.filetype</code>
+              </p>
+
               <label className="text-sm font-medium text-gray-700 mr-3">
                 Document Type <span className="text-red-500">*</span>
               </label>
@@ -474,6 +548,50 @@ export default function DocumentUploadSection() {
                 }}
                 className="pl-9 text-base h-10 rounded-full border border-gray-200 focus-visible:ring-0 shadow-none"
               />
+            </div>
+            <div className="flex gap-3 mb-4">
+              <Input
+                className="w-50"
+                type="date"
+                value={draftDateFrom}
+                onChange={(e) => setDraftDateFrom(e.target.value)}
+              />
+
+              <Input
+                className="w-50"
+                type="date"
+                value={draftDateTo}
+                onChange={(e) => setDraftDateTo(e.target.value)}
+              />
+
+              <div className="pt-2">
+                <Button
+                  className="bg-blue-700 text-white hover:bg-blue-500"
+                  onClick={() => {
+                    setDateFrom(draftDateFrom);
+                    setDateTo(draftDateTo);
+                    setPage(1);
+                  }}
+                >
+                  Apply
+                </Button>
+              </div>
+
+              <div className="pt-2">
+                <Button
+                  variant="outline"
+                  className="text-white bg-red-700 hover:bg-red-500 hover:text-white"
+                  onClick={() => {
+                    setDraftDateFrom("");
+                    setDraftDateTo("");
+                    setDateFrom("");
+                    setDateTo("");
+                    setPage(1);
+                  }}
+                >
+                  Clear
+                </Button>
+              </div>
             </div>
           </div>
 

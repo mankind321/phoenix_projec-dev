@@ -115,11 +115,11 @@ export const TopHeaderManager: React.FC = () => {
   // Navigation Items
   // --------------------------------------------------
   const navItems = [
-    { label: "Dashboard", path: "/dashboard/main", icon: <CircleGauge className="w-4 h-4" /> },
-    { label: "Properties", path: "/dashboard/properties", icon: <Home className="w-4 h-4" /> },
+    { label: "Property Search", path: "/dashboard/properties", icon: <Home className="w-4 h-4" /> },
     { label: "Tenants", path: "/dashboard/leases", icon: <ClipboardList className="w-4 h-4" /> },
-    { label: "Broker", path: "/dashboard/contact", icon: <Contact className="w-4 h-4" /> },
+    { label: "Contacts", path: "/dashboard/contact", icon: <Contact className="w-4 h-4" /> },
     { label: "Documents", path: "/dashboard/documents", icon: <FileText className="w-4 h-4" /> },
+    { label: "Statistics", path: "/dashboard/main", icon: <CircleGauge className="w-4 h-4" /> },
     { label: "Review", path: "/dashboard/review", icon: <View className="w-4 h-4" /> },
     { label: "Audit Trail", path: "/dashboard/audit-trail", icon: <Activity className="w-4 h-4" /> },
   ];
@@ -133,7 +133,7 @@ export const TopHeaderManager: React.FC = () => {
           <Building2 className="w-8 h-8 text-white" />
         </div>
         <div className="flex flex-col leading-tight">
-          <h1 className="text-lg font-semibold text-black">Phoenix Project</h1>
+          <h1 className="text-lg font-semibold text-black">Commerical Property Database</h1>
           <span className="text-xs text-gray-600">Real Property Management</span>
         </div>
       </div>
