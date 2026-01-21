@@ -4,11 +4,10 @@ import { createClient } from "@supabase/supabase-js";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 
-// 🔐 Create Supabase client WITH header-based RLS
 function createRlsClient(headers: Record<string, string>) {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!, // MUST use service role for header-based RLS
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
     {
       db: { schema: "public" },
       global: { headers },
@@ -18,7 +17,6 @@ function createRlsClient(headers: Record<string, string>) {
 
 export async function GET(req: Request) {
   try {
-    // 1️⃣ Get NextAuth session
     const session = await getServerSession(authOptions);
 
     if (!session?.user) {
@@ -28,19 +26,21 @@ export async function GET(req: Request) {
       );
     }
 
-    // 🔥 Build RLS headers
-    const rlsHeaders = {
-      "x-app-role": session.user.role,
-      "x-user-id": session.user.id,
-      "x-account-id": session.user.accountId ?? "",
+    // 🔑 Session values (from your authOptions)
+    const { id: userId, role, accountId } = session.user;
+
+    // 🔥 RLS headers (still useful)
+    const rlsHeaders: Record<string, string> = {
+      "x-app-role": role,
+      "x-user-id": userId,
+      "x-account-id": accountId,
+      "x-session-id": session.session_id ?? "",
     };
 
-    // 2️⃣ Create Supabase client with headers
     const supabase = createRlsClient(rlsHeaders);
-
     const url = new URL(req.url);
 
-    // 3️⃣ Extract filters
+    // 🔍 Filters
     const page = parseInt(url.searchParams.get("page") || "1");
     const pageSize = parseInt(url.searchParams.get("pageSize") || "10");
     const search = url.searchParams.get("search") || "";
@@ -52,14 +52,39 @@ export async function GET(req: Request) {
     const from = (page - 1) * pageSize;
     const to = from + pageSize - 1;
 
-    // 4️⃣ Base query
+    // 📄 Base query
     let query = supabase
       .from("system_audit_trail")
       .select("*", { count: "exact" })
-      .order("created_at", { ascending: false })
-      .range(from, to);
+      .order("created_at", { ascending: false });
 
-    // 🔍 Search filter
+    // 🧠 ROLE-BASED VISIBILITY (OPTION 1)
+    if (role === "Agent") {
+      // Agent → own logs only
+      query = query.eq("user_id", userId);
+    }
+
+    if (role === "Manager") {
+      // 1️⃣ Get member user IDs
+      console.log(accountId);
+      const { data: members, error } = await supabase
+        .from("useraccountaccess")
+        .select("userid")
+        .eq("manager_id", accountId);
+
+      if (error) throw error;
+
+      console.log(members);
+
+      const memberIds = members?.map((m) => m.userid) ?? [];
+
+      // 2️⃣ Include manager + members
+      query = query.in("user_id", [userId, ...memberIds]);
+    }
+
+    // Admin → unrestricted
+
+    // 🔎 Search
     if (search) {
       query = query.or(
         `username.ilike.%${search}%,` +
@@ -69,23 +94,25 @@ export async function GET(req: Request) {
       );
     }
 
-    // 🎯 Action filter
+    // 🎯 Action
     if (action !== "all") {
       query = query.eq("action_type", action.toUpperCase());
     }
 
-    // 👤 User filter
+    // 👤 UI user filter
     if (user !== "all") {
       query = query.eq("user_id", user);
     }
 
-    // 📅 Date ranges
+    // 📅 Dates
     if (fromDate) query = query.gte("created_at", fromDate);
     if (toDate) query = query.lte("created_at", `${toDate} 23:59:59`);
 
-    // 5️⃣ Execute query
-    const { data, count, error } = await query;
+    // 📄 Pagination
+    query = query.range(from, to);
 
+    // 🚀 Execute
+    const { data, count, error } = await query;
     if (error) throw error;
 
     return NextResponse.json({
@@ -99,7 +126,7 @@ export async function GET(req: Request) {
       },
     });
   } catch (err: any) {
-    console.error("❌ GET /api/audit-trail error:", err.message);
+    console.error("❌ audit-trail error:", err.message);
     return NextResponse.json(
       { success: false, message: err.message },
       { status: 500 }

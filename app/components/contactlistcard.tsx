@@ -292,7 +292,7 @@ export default function ContactTable() {
           <div className="flex items-center gap-2">
             <Contact className="w-6 h-6 text-gray-700" />
             <h2 className="text-xl font-semibold text-gray-800">
-              Broker List
+              Contact List
             </h2>
           </div>
           <p className="text-sm text-gray-500">Manage broker contacts.</p>

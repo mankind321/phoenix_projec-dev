@@ -63,6 +63,7 @@ interface User {
   license_expiration: string;
   username?: string;
   manager?: string;
+  accountid:string;
 }
 
 // ========================
@@ -75,7 +76,9 @@ function DeleteUserModal({ open, onClose, user, onDeleted }: any) {
   const handleConfirmDelete = async () => {
     setIsDeleting(true);
     try {
-      const res = await fetch(`/api/users/${user.userid}`, { method: "DELETE" });
+      const res = await fetch(`/api/users/${user.userid}`, {
+        method: "DELETE",
+      });
       const data = await res.json();
 
       if (data.success) {
@@ -98,7 +101,11 @@ function DeleteUserModal({ open, onClose, user, onDeleted }: any) {
         <DialogHeader>
           <DialogTitle>Confirm Delete</DialogTitle>
           <DialogDescription>
-            Delete <b>{user.first_name} {user.last_name}</b>? This cannot be undone.
+            Delete{" "}
+            <b>
+              {user.first_name} {user.last_name}
+            </b>
+            ? This cannot be undone.
           </DialogDescription>
         </DialogHeader>
 
@@ -140,6 +147,9 @@ export default function UserTable() {
   const [isLoading, setIsLoading] = React.useState(true);
   const [deleteOpen, setDeleteOpen] = React.useState(false);
   const [selectedUser, setSelectedUser] = React.useState<User | null>(null);
+  const [loggingOutUserId, setLoggingOutUserId] = React.useState<number | null>(
+    null,
+  );
 
   // ========================
   // FETCH USERS
@@ -151,7 +161,7 @@ export default function UserTable() {
       setIsLoading(true);
 
       const res = await fetch(
-        `/api/users?page=${page}&pageSize=${pageSize}&search=${encodeURIComponent(globalFilter)}`
+        `/api/users?page=${page}&pageSize=${pageSize}&search=${encodeURIComponent(globalFilter)}`,
       );
       const data = await res.json();
 
@@ -164,6 +174,38 @@ export default function UserTable() {
       setIsLoading(false);
     }
   }, [status, page, pageSize, globalFilter]);
+
+  const handleForceLogout = async (user: User) => {
+    if (!user.accountid) {
+      toast.error("Missing account ID.");
+      return;
+    }
+
+    setLoggingOutUserId(user.userid);
+
+    try {
+      const res = await fetch(
+        `/api/users/${user.accountid}/force-logout`, // ✅ UUID
+        { method: "POST" },
+      );
+
+      console.log("Account ID:",user.accountid);
+
+      const data = await res.json();
+
+      if (data.success) {
+        toast.success(
+          `User ${user.first_name} ${user.last_name} has been logged out`,
+        );
+      } else {
+        toast.error(data.message || "Failed to force logout user.");
+      }
+    } catch {
+      toast.error("Unexpected error.");
+    } finally {
+      setLoggingOutUserId(null);
+    }
+  };
 
   React.useEffect(() => {
     loadUsers();
@@ -217,9 +259,21 @@ export default function UserTable() {
               <Button
                 size="sm"
                 variant="outline"
-                onClick={() => router.push(`/dashboard/users/edit?id=${user.userid}`)}
+                onClick={() =>
+                  router.push(`/dashboard/users/edit?id=${user.userid}`)
+                }
               >
                 <Edit size={15} />
+              </Button>
+
+              <Button
+                size="sm"
+                variant="secondary"
+                disabled={loggingOutUserId === user.userid}
+                onClick={() => handleForceLogout(user)}
+                title="Force Logout"
+              >
+                <RotateCcw size={15} />
               </Button>
 
               <Button
@@ -237,7 +291,7 @@ export default function UserTable() {
         },
       },
     ],
-    [router]
+    [loggingOutUserId, router],
   );
 
   // ========================
@@ -257,23 +311,22 @@ export default function UserTable() {
   // ========================
   // AUTH CHECKS
   // ========================
-  if (status === "loading") return <p className="text-center mt-10">Checking session…</p>;
-  if (status !== "authenticated") return <p className="text-center mt-10">Please login.</p>;
+  if (status === "loading")
+    return <p className="text-center mt-10">Checking session…</p>;
+  if (status !== "authenticated")
+    return <p className="text-center mt-10">Please login.</p>;
 
   // ========================
   // RENDER UI
   // ========================
   return (
     <div className="w-11/12 mx-auto mt-6 space-y-6">
-
       {/* HEADER */}
       <div className="flex flex-col md:flex-row justify-between items-center gap-3 pb-4">
         <div>
           <div className="flex items-center gap-2">
             <Users className="w-6 h-6 text-gray-700" />
-            <h2 className="text-xl font-semibold text-gray-800">
-              User List
-            </h2>
+            <h2 className="text-xl font-semibold text-gray-800">User List</h2>
           </div>
           <p className="text-sm text-gray-500">
             Manage and view all registered users.
@@ -314,7 +367,10 @@ export default function UserTable() {
                     key={header.id}
                     className="text-left font-semibold text-gray-700 p-3"
                   >
-                    {flexRender(header.column.columnDef.header, header.getContext())}
+                    {flexRender(
+                      header.column.columnDef.header,
+                      header.getContext(),
+                    )}
                   </TableHead>
                 ))}
               </TableRow>
@@ -324,7 +380,10 @@ export default function UserTable() {
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={columns.length} className="py-10 text-center">
+                <TableCell
+                  colSpan={columns.length}
+                  className="py-10 text-center"
+                >
                   Loading…
                 </TableCell>
               </TableRow>
@@ -336,7 +395,10 @@ export default function UserTable() {
                 >
                   {row.getVisibleCells().map((cell) => (
                     <TableCell key={cell.id} className="p-3">
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      {flexRender(
+                        cell.column.columnDef.cell,
+                        cell.getContext(),
+                      )}
                     </TableCell>
                   ))}
                 </TableRow>

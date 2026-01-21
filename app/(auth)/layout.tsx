@@ -26,30 +26,26 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
     const intentionalLogout =
       sessionStorage.getItem("isLoggingOut") === "true";
 
-    // When login succeeds
     if (status === "authenticated" && session?.user) {
       wasAuthenticated.current = true;
-
       lastUserRef.current = {
         accountId: session.user.accountId,
         username: session.user.username,
       };
     }
 
-    // When session becomes unauthenticated
     if (status === "unauthenticated") {
-      if (!intentionalLogout) {
-        toast.error("Session expired or not logged in.");
-      } else {
-        sessionStorage.removeItem("isLoggingOut");
+      if (!intentionalLogout && wasAuthenticated.current) {
+        toast.error("Session expired. Please log in again.");
       }
 
+      sessionStorage.removeItem("isLoggingOut");
       router.replace("/login");
     }
   }, [status, session, router]);
 
   // ==========================================
-  // 🔵 MARK USER OFFLINE ONLY ON TRUE SESSION END
+  // 🔵 MARK USER OFFLINE ON REAL SESSION END
   // ==========================================
   useEffect(() => {
     const intentionalLogout =
@@ -57,7 +53,7 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
 
     if (
       status === "unauthenticated" &&
-      wasAuthenticated.current === true &&
+      wasAuthenticated.current &&
       !intentionalLogout &&
       lastUserRef.current
     ) {
@@ -69,7 +65,7 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
   }, [status]);
 
   // ==========================================
-  // 🔵 TAB CLOSE LOGOUT — ONLY CLOSE, NOT SWITCH TABS
+  // 🔵 TAB & BROWSER CLOSE (BEST-EFFORT ONLY)
   // ==========================================
   useEffect(() => {
     if (!session?.user) return;
@@ -82,30 +78,55 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
     const isIntentionalLogout = () =>
       sessionStorage.getItem("isLoggingOut") === "true";
 
-    const handleBeforeUnload = () => {
-      if (!isIntentionalLogout()) {
-        navigator.sendBeacon("/api/auth/update-status-offline", payload);
+    const handleVisibilityChange = () => {
+      if (
+        document.visibilityState === "hidden" &&
+        !isIntentionalLogout()
+      ) {
+        navigator.sendBeacon(
+          "/api/auth/update-status-offline",
+          payload
+        );
       }
     };
 
-    // Fires ONLY on tab close or browser close
+    const handleBeforeUnload = () => {
+      if (!isIntentionalLogout()) {
+        navigator.sendBeacon(
+          "/api/auth/update-status-offline",
+          payload
+        );
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
     window.addEventListener("beforeunload", handleBeforeUnload);
 
-    return () =>
-      window.removeEventListener("beforeunload", handleBeforeUnload);
+    return () => {
+      document.removeEventListener(
+        "visibilitychange",
+        handleVisibilityChange
+      );
+      window.removeEventListener(
+        "beforeunload",
+        handleBeforeUnload
+      );
+    };
   }, [session]);
 
   // ==========================================
-  // 🔵 AUTO INACTIVITY LOGOUT (from AutoLogout)
+  // 🔵 AUTO LOGOUT AFTER 10 MINUTES IDLE
   // ==========================================
   useEffect(() => {
     if (!session?.user) return;
 
-    const interval = setInterval(async () => {
-      const inactive = sessionStorage.getItem("user-inactive") === "true";
+    const checkIdle = async () => {
+      const inactive =
+        sessionStorage.getItem("user-inactive") === "true";
       if (!inactive) return;
 
-      // Mark user offline
+      sessionStorage.setItem("isLoggingOut", "true");
+
       navigator.sendBeacon(
         "/api/auth/update-status-offline",
         JSON.stringify({
@@ -114,22 +135,22 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
         })
       );
 
-      // Then log out
-      sessionStorage.setItem("isLoggingOut", "true");
       await signOut({ redirect: false });
       router.replace("/login");
-    }, 2000);
+    };
 
+    const interval = setInterval(checkIdle, 10_000); // check every 10s
     return () => clearInterval(interval);
   }, [session, router]);
 
   // ==========================================
-  // Block rendering until session is ready
+  // ⛔ BLOCK RENDER UNTIL SESSION IS READY
   // ==========================================
   if (!session?.user) return null;
 
   return (
     <div className="min-h-screen bg-white">
+      {/* Idle detection */}
       <AutoLogout />
 
       {/* SIDEBAR + HEADER */}
@@ -144,7 +165,9 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
       </div>
 
       {/* CONTENT */}
-      <main className="ml-64 p-6 bg-white">{children}</main>
+      <main className="ml-64 p-6 bg-white">
+        {children}
+      </main>
     </div>
   );
 }

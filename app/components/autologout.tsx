@@ -3,39 +3,45 @@
 import { useEffect, useRef } from "react";
 import { useSession } from "next-auth/react";
 
+const IDLE_TIME = 10 * 60 * 1000; // ✅ 10 minutes
+
 export function AutoLogout() {
-  const { data: session, status } = useSession();
+  const { status } = useSession();
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     if (status !== "authenticated") return;
 
-    const sendInactivitySignal = () => {
+    const markInactive = () => {
       sessionStorage.setItem("user-inactive", "true");
     };
 
     const resetTimer = () => {
-      sessionStorage.removeItem("user-inactive");
-      if (timeoutRef.current) clearTimeout(timeoutRef.current);
-      timeoutRef.current = setTimeout(sendInactivitySignal, 5 * 60 * 1000); // 5 minutes
+      // ✅ Normalize inactive flag
+      sessionStorage.setItem("user-inactive", "false");
+
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+
+      timeoutRef.current = setTimeout(markInactive, IDLE_TIME);
     };
 
-    // User activity listeners
-    window.addEventListener("mousemove", resetTimer);
-    window.addEventListener("keydown", resetTimer);
-    window.addEventListener("click", resetTimer);
-    window.addEventListener("scroll", resetTimer);
+    const events = ["mousemove", "keydown", "click", "scroll", "touchstart"];
+
+    events.forEach(event =>
+      window.addEventListener(event, resetTimer)
+    );
 
     resetTimer(); // start timer immediately
 
     return () => {
-      window.removeEventListener("mousemove", resetTimer);
-      window.removeEventListener("keydown", resetTimer);
-      window.removeEventListener("click", resetTimer);
-      window.removeEventListener("scroll", resetTimer);
+      events.forEach(event =>
+        window.removeEventListener(event, resetTimer)
+      );
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
     };
-  }, [session, status]);
+  }, [status]);
 
   return null;
 }
