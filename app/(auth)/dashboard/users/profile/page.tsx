@@ -255,7 +255,7 @@ export default function ProfilePage() {
                     !formData.firstName.trim()
                   )}`}
                 />
-                <User className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                <User className="absolute left-3 top-3 h-4 w-4 text-gray-400 mt-2" />
               </div>
             </div>
 
@@ -325,7 +325,7 @@ export default function ProfilePage() {
                     !formData.email.trim()
                   )}`}
                 />
-                <Mail className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                <Mail className="absolute left-3 top-3 h-4 w-4 text-gray-400 mt-2" />
               </div>
             </div>
 
@@ -341,7 +341,7 @@ export default function ProfilePage() {
                     !formData.mobile.trim()
                   )}`}
                 />
-                <Phone className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                <Phone className="absolute left-3 top-3 h-4 w-4 text-gray-400 mt-2" />
               </div>
             </div>
           </div>
