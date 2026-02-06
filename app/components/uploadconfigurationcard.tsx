@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import { useState } from "react";
@@ -14,6 +15,7 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+
 import { toast } from "sonner";
 
 import ErrorMonitoringTable from "./errormonitoringcard";
@@ -31,7 +33,7 @@ export default function DocumentUploadSection() {
   const { data: session } = useSession();
 
   // ------------------------------
-  // UPLOAD STATE (UNCHANGED)
+  // STATE
   // ------------------------------
   const [files, setFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
@@ -60,7 +62,7 @@ export default function DocumentUploadSection() {
     allowedMimeTypes.map((t) => mimeTypeLabels[t] || t).join(", ");
 
   // ------------------------------
-  // UPLOAD LOGIC (UNCHANGED)
+  // FILE HANDLING
   // ------------------------------
   function addFiles(selected: File[]) {
     const validFiles: File[] = [];
@@ -72,12 +74,14 @@ export default function DocumentUploadSection() {
         });
         return;
       }
+
       validFiles.push(file);
     });
 
     if (!validFiles.length) return;
 
     const total = [...files, ...validFiles];
+
     if (total.length > maxFiles) {
       toast.warning(`Max ${maxFiles} files allowed`);
       setFiles(total.slice(0, maxFiles));
@@ -89,12 +93,15 @@ export default function DocumentUploadSection() {
 
   function handleFileInput(e: React.ChangeEvent<HTMLInputElement>) {
     if (!e.target.files) return;
+
     addFiles(Array.from(e.target.files));
+
     e.target.value = "";
   }
 
   function handleDrop(e: React.DragEvent<HTMLDivElement>) {
     e.preventDefault();
+
     addFiles(Array.from(e.dataTransfer.files));
   }
 
@@ -102,37 +109,168 @@ export default function DocumentUploadSection() {
     setFiles(files.filter((f) => f.name !== name));
   }
 
-  async function handleUpload() {
-    if (!session) return toast.error("You must be logged in to upload.");
-    if (!files.length) return toast.warning("No files selected");
-    if (!docType) return toast.error("Please select a document type.");
+  // ------------------------------
+  // PRECHECK FUNCTION
+  // ------------------------------
+  async function runPrecheck(): Promise<boolean> {
+    const fileNames = files.map((file) => file.name);
 
-    setUploading(true);
-    const toastId = toast.loading(`Uploading 0 of ${files.length}...`);
-
-    for (let i = 0; i < files.length; i++) {
-      const formData = new FormData();
-      formData.append("file", files[i]);
-      formData.append("document_type", docType);
-
-      await fetch("/api/upload/document", {
+    try {
+      const res = await fetch("/api/upload/precheck", {
         method: "POST",
-        body: formData,
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          file_names: fileNames,
+        }),
       });
 
-      toast.message(`Uploading ${i + 1} of ${files.length}...`, {
-        id: toastId,
+      const json = await res.json();
+
+      if (!res.ok) {
+        const failedFiles = json.failed_files || [];
+
+        if (failedFiles.length > 0) {
+          const failedList = failedFiles
+            .map((f: any, index: number) => `${index + 1}. ${f.file_name}`)
+            .join("\n");
+
+          toast.error(
+            `Upload blocked. ${failedFiles.length} file(s) are still in the Error Document List. Delete it first before uploading`,
+            {
+              description: (
+                <div className="max-h-40 overflow-y-auto whitespace-pre-line text-sm">
+                  {failedList}
+                </div>
+              ),
+              duration: 12000,
+            }
+            ,
+          );
+        } else {
+          toast.error("Upload blocked", {
+            description: json.message || "Unknown precheck error",
+          });
+        }
+
+        return false;
+      }
+
+      return true;
+    } catch (error: any) {
+      toast.error("Precheck failed", {
+        description: error.message,
       });
+
+      return false;
     }
-
-    toast.dismiss(toastId);
-    toast.success("Upload complete!");
-    setFiles([]);
-    setUploading(false);
   }
 
   // ------------------------------
-  // UI (DESIGN RETAINED)
+  // UPLOAD FUNCTION
+  // ------------------------------
+  async function handleUpload() {
+    if (!session) {
+      toast.error("You must be logged in.");
+      return;
+    }
+
+    if (!files.length) {
+      toast.warning("No files selected.");
+      return;
+    }
+
+    if (!docType) {
+      toast.error("Please select document type.");
+      return;
+    }
+
+    setUploading(true);
+
+    try {
+      // STEP 1: PRECHECK ALL FILES
+      const passed = await runPrecheck();
+      console.log(passed);
+      if (!passed) {
+        setUploading(false);
+        console.log("This is running")
+        return;
+      }
+
+      
+      const toastId = toast.loading(`Uploading 0 of ${files.length} files...`);
+
+      // STEP 2: UPLOAD FILES
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+
+        toast.message(`Preparing ${file.name} (${i + 1}/${files.length})`, {
+          id: toastId,
+        });
+
+        // Get signed URL
+        const signedUrlRes = await fetch("/api/upload/document", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            file_name: file.name,
+            content_type: file.type,
+            file_size: file.size,
+            document_type: docType,
+          }),
+        });
+
+        const signedUrlJson = await signedUrlRes.json();
+
+        if (!signedUrlRes.ok || !signedUrlJson.success) {
+          throw new Error(
+            signedUrlJson.message || `Failed to prepare ${file.name}`,
+          );
+        }
+
+        const { signed_url } = signedUrlJson;
+
+        toast.message(`Uploading ${file.name} (${i + 1}/${files.length})`, {
+          id: toastId,
+        });
+
+        // Upload to GCS
+        const uploadRes = await fetch(signed_url, {
+          method: "PUT",
+          headers: {
+            "Content-Type": file.type || "application/octet-stream",
+          },
+          body: file,
+        });
+
+        if (!uploadRes.ok) {
+          const errorText = await uploadRes.text();
+
+          throw new Error(`Upload failed: ${file.name}\n${errorText}`);
+        }
+      }
+
+      toast.dismiss();
+
+      toast.success("All files uploaded successfully.");
+
+      setFiles([]);
+    } catch (error: any) {
+      toast.dismiss();
+
+      toast.error("Upload failed", {
+        description: error.message,
+      });
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  // ------------------------------
+  // UI
   // ------------------------------
   return (
     <div className="w-11/12 mx-auto mt-6 space-y-6">
@@ -140,10 +278,12 @@ export default function DocumentUploadSection() {
       <div>
         <div className="flex items-center gap-2">
           <FileText className="w-6 h-6 text-gray-700" />
+
           <h2 className="text-xl font-semibold text-gray-800">
             Document Management
           </h2>
         </div>
+
         <p className="text-sm text-gray-500">
           Upload, Search and Filter Documents.
         </p>
@@ -152,24 +292,26 @@ export default function DocumentUploadSection() {
       <Tabs defaultValue="upload" className="w-full">
         <TabsList className="mb-6">
           <TabsTrigger value="upload">Upload Document</TabsTrigger>
+
           <TabsTrigger value="list">Document List</TabsTrigger>
+
           <TabsTrigger value="errorList">Error Document List</TabsTrigger>
         </TabsList>
 
-        {/* UPLOAD TAB — UNCHANGED */}
         <TabsContent value="upload">
-                    <div className="space-y-6">
+          <div className="space-y-6">
             {!session && (
               <p className="text-red-500 text-sm">
                 You must be logged in to upload documents.
               </p>
             )}
 
-            {/* Document Type Dropdown */}
+            {/* Document Type */}
             <div>
               <label className="text-sm font-medium text-gray-700 mr-3">
                 Document Type <span className="text-red-500">*</span>
               </label>
+
               <select
                 value={docType}
                 onChange={(e) => setDocType(e.target.value)}
@@ -177,18 +319,13 @@ export default function DocumentUploadSection() {
                 disabled={!session?.user || reachedLimit}
               >
                 <option value="">Select Document Type</option>
+
                 {documentTypes.map((t) => (
                   <option key={t} value={t}>
                     {t}
                   </option>
                 ))}
               </select>
-
-              {!docType && session?.user && (
-                <p className="text-xs text-gray-500 mt-1">
-                  Please select a document type to enable file upload.
-                </p>
-              )}
             </div>
 
             {/* Dropzone */}
@@ -196,20 +333,18 @@ export default function DocumentUploadSection() {
               onDrop={!docType || reachedLimit ? undefined : handleDrop}
               onDragOver={(e) => docType && !reachedLimit && e.preventDefault()}
               className={`border-2 border-dashed rounded-lg py-10 px-6 text-center
-        ${
-          !docType || reachedLimit
-            ? "opacity-50 border-gray-300 cursor-not-allowed"
-            : "cursor-pointer hover:border-blue-400 border-gray-300"
-        }`}
+              ${
+                !docType || reachedLimit
+                  ? "opacity-50 border-gray-300 cursor-not-allowed"
+                  : "cursor-pointer hover:border-blue-400 border-gray-300"
+              }`}
             >
               <Upload className="h-10 w-10 text-gray-400 mb-3" />
+
               <h3 className="text-base font-medium">Upload Documents</h3>
+
               <p className="text-sm text-gray-500">
-                {!docType
-                  ? "Select a document type first."
-                  : reachedLimit
-                    ? "Maximum of 10 uploaded documents reached."
-                    : "Drag & drop files or click to browse"}
+                Drag & drop files or click to browse
               </p>
 
               <input
@@ -236,7 +371,7 @@ export default function DocumentUploadSection() {
               </Button>
             </div>
 
-            {/* Selected Files Preview */}
+            {/* File list */}
             {files.length > 0 && (
               <ul className="space-y-2 mt-4">
                 {files.map((file) => (
@@ -248,6 +383,7 @@ export default function DocumentUploadSection() {
                       <FileIcon className="text-blue-500" />
                       <span>{file.name}</span>
                     </div>
+
                     <button
                       onClick={() => removeFile(file.name)}
                       disabled={uploading}
@@ -260,7 +396,7 @@ export default function DocumentUploadSection() {
               </ul>
             )}
 
-            {/* Upload Button */}
+            {/* Upload button */}
             {files.length > 0 && (
               <div className="flex justify-end">
                 <Button onClick={handleUpload} disabled={uploading || !docType}>
@@ -272,12 +408,10 @@ export default function DocumentUploadSection() {
           </div>
         </TabsContent>
 
-        {/* LIST TAB — REMOVED & REPLACED */}
         <TabsContent value="list">
           <DocumentListTab />
         </TabsContent>
 
-        {/* ERROR TAB — UNCHANGED */}
         <TabsContent value="errorList">
           <ErrorMonitoringTable />
         </TabsContent>
