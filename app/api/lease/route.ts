@@ -1,3 +1,9 @@
+import dns from "dns";
+dns.setDefaultResultOrder("ipv4first");
+
+export const runtime = "nodejs";
+process.env.GAX_GCN_DISALLOW_IPv6 = "true";
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
@@ -54,22 +60,32 @@ const ALLOWED_SORT_FIELDS = new Set([
 ]);
 
 /* ============================================================
-   🤖 AI Setup
+   🤖 Gemini Setup
 ============================================================ */
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_GENAI_API_KEY!);
 const MODEL = "models/gemini-2.5-flash";
 
 /* ============================================================
-   🤖 Detect Prompt-Style Search
+   🤖 AI Query Detection (Improved — Matches Property API Logic)
 ============================================================ */
 function isAiQuery(text: string | null): boolean {
   if (!text) return false;
 
-  const t = text.toLowerCase().trim();
+  const t = text.toLowerCase().trim().replace(/\s+/g, " ");
 
-  if (!t.includes(" ")) return false;
+  console.log("🧠 Lease isAiQuery normalized:", JSON.stringify(t));
 
-  const keywords = [
+  // RULE 1: Question pattern
+  const questionPattern =
+    /^(find|show|list|get|search|which|what|leases|who)\b/i;
+
+  if (questionPattern.test(t)) {
+    console.log("🤖 Question pattern → AI search");
+    return true;
+  }
+
+  // RULE 2: Lease intent keywords
+  const aiKeywords = [
     "active",
     "expired",
     "expiring",
@@ -80,25 +96,37 @@ function isAiQuery(text: string | null): boolean {
     "between",
     "this month",
     "next month",
-    "last year",
+    "last month",
+    "next year",
     "tenant",
     "landlord",
     "property",
+    "lease",
+    "rent",
   ];
 
-  return keywords.some(k => t.includes(k)) || t.split(" ").length >= 3;
+  const hasKeyword = aiKeywords.some(k => t.includes(k));
+
+  if (hasKeyword) {
+    console.log("🤖 Intent keyword detected → AI search");
+    return true;
+  }
+
+  // RULE 3: Everything else = Traditional
+  console.log("📄 Default → Traditional search");
+  return false;
 }
 
 /* ============================================================
-   🤖 AI → EXISTING FILTER PARAMS
+   🤖 AI FILTER EXTRACTION
 ============================================================ */
 async function extractLeaseFilters(prompt: string) {
+  console.log("🧠 extractLeaseFilters called:", prompt);
+
   const model = genAI.getGenerativeModel({ model: MODEL });
 
   const instruction = `
-You are a lease search query parser.
-
-Extract filters that already exist in the system.
+You are a lease query parser.
 
 Return ONLY valid JSON:
 
@@ -115,15 +143,22 @@ User query: "${prompt}"
 `;
 
   const result = await model.generateContent(instruction);
+
   let text = result.response.text().trim();
+
+  console.log("🧠 Gemini RAW:", text);
 
   if (text.startsWith("```")) {
     text = text.replace(/```json/gi, "").replace(/```/g, "").trim();
   }
 
   try {
-    return JSON.parse(text);
+    const parsed = JSON.parse(text);
+    console.log("✅ Gemini parsed filters:", parsed);
+    return parsed;
   } catch {
+    console.error("❌ Gemini parse failed");
+
     return {
       tenant: null,
       landlord: null,
@@ -136,19 +171,21 @@ User query: "${prompt}"
 }
 
 /* ============================================================
-   📌 GET — Lease List
+   📌 GET HANDLER
 ============================================================ */
 export async function GET(req: Request) {
   try {
-    // 1️⃣ Auth
     const session = await getServerSession(authOptions);
+
     if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return NextResponse.json(
+        { success: false, message: "Unauthorized" },
+        { status: 401 }
+      );
     }
 
     const user = session.user;
 
-    // 2️⃣ RLS Headers
     const rlsHeaders = {
       "x-app-role": user.role,
       "x-user-id": user.id,
@@ -159,108 +196,162 @@ export async function GET(req: Request) {
 
     const { searchParams } = new URL(req.url);
 
-    // Pagination
-    const page = Number(searchParams.get("page") || 1);
-    const pageSize = Number(searchParams.get("pageSize") || 20);
-    const offset = (page - 1) * pageSize;
+    /* ============================================================
+       SEARCH PARAMETER RESOLUTION
+    ============================================================ */
 
-    // Filters
-    const search = (searchParams.get("search") || "").trim();
-    const propertyId = searchParams.get("propertyId");
-    const userId = searchParams.get("userId");
-    let status = searchParams.get("status");
+    const rawSearch = searchParams.get("search") || "";
+    const queryText = searchParams.get("query");
 
-    // Sorting
+    const search =
+      rawSearch || (queryText && !isAiQuery(queryText) ? queryText : "");
+
+    const aiTriggered = Boolean(queryText && isAiQuery(queryText));
+
+    console.log("🧾 Lease Search Resolution:", {
+      rawSearch,
+      queryText,
+      finalSearchUsed: search,
+      aiTriggered,
+    });
+
+    /* ============================================================
+       PAGINATION
+    ============================================================ */
+
+    const page = Number(searchParams.get("page")) || 1;
+    const limit = Number(searchParams.get("limit")) || 20;
+    const offset = (page - 1) * limit;
+
+    /* ============================================================
+       SORTING
+    ============================================================ */
+
     const sortField = searchParams.get("sortField") || "created_at";
-    const sortOrder =
-      searchParams.get("sortOrder")?.toLowerCase() === "asc" ? "asc" : "desc";
 
-    const sortKey = ALLOWED_SORT_FIELDS.has(sortField)
+    const sortOrder =
+      searchParams.get("sortOrder") === "asc" ? "asc" : "desc";
+
+    const field = ALLOWED_SORT_FIELDS.has(sortField)
       ? sortField
       : "created_at";
 
     /* ============================================================
-       🤖 AI MODE — map AI output → existing filters
+       AI MODE
     ============================================================ */
-    let aiFilters: any = null;
 
-    if (search && isAiQuery(search)) {
-      aiFilters = await extractLeaseFilters(search);
+    if (aiTriggered) {
+      console.log("🤖 Lease AI search triggered");
 
-      if (aiFilters.status) status = aiFilters.status;
+      const filters = await extractLeaseFilters(queryText!);
+
+      let query = supabase
+        .from("view_lease_property_with_user")
+        .select("*", { count: "exact" });
+
+      if (filters.status)
+        query = query.eq("status", filters.status);
+
+      if (filters.tenant)
+        query = query.ilike("tenant", `%${filters.tenant}%`);
+
+      if (filters.landlord)
+        query = query.ilike("landlord", `%${filters.landlord}%`);
+
+      if (filters.property_name)
+        query = query.ilike("property_name", `%${filters.property_name}%`);
+
+      if (filters.lease_start_from)
+        query = query.gte("lease_start", filters.lease_start_from);
+
+      if (filters.lease_end_to)
+        query = query.lte("lease_end", filters.lease_end_to);
+
+      query = query.order(field, {
+        ascending: sortOrder === "asc",
+      });
+
+      const { data, count, error } = await query;
+
+      if (error)
+        return NextResponse.json({
+          success: false,
+          message: error.message,
+        });
+
+      await audit(session, req, `AI lease search: "${queryText}"`);
+
+      return NextResponse.json({
+        success: true,
+        mode: "ai",
+        extracted_filters: filters,
+        data: data ?? [],
+        total: count ?? 0,
+        page,
+        limit,
+      });
     }
 
     /* ============================================================
-       🔍 Base Query
+       TRADITIONAL MODE
     ============================================================ */
+
+    console.log("📄 Lease Traditional search executing");
+
     let query = supabase
       .from("view_lease_property_with_user")
       .select("*", { count: "exact" });
 
-    if (propertyId) query = query.eq("property_id", propertyId);
-    if (userId) query = query.eq("user_id", userId);
-    if (status && status !== "all") query = query.eq("status", status);
+    if (search && search.trim().length > 0) {
+      const safe = search
+        .trim()
+        .replace(/[%_]/g, "")
+        .replace(/,/g, "")
+        .replace(/\s+/g, " ");
 
-    // Apply AI-derived filters
-    if (aiFilters?.tenant)
-      query = query.ilike("tenant", `%${aiFilters.tenant}%`);
+      const orFilter = [
+        `tenant.ilike.%${safe}%`,
+        `landlord.ilike.%${safe}%`,
+        `property_name.ilike.%${safe}%`,
+        `comments.ilike.%${safe}%`,
+      ].join(",");
 
-    if (aiFilters?.landlord)
-      query = query.ilike("landlord", `%${aiFilters.landlord}%`);
+      console.log("🔍 Lease Traditional filter:", orFilter);
 
-    if (aiFilters?.property_name)
-      query = query.ilike("property_name", `%${aiFilters.property_name}%`);
-
-    if (aiFilters?.lease_start_from)
-      query = query.gte("lease_start", aiFilters.lease_start_from);
-
-    if (aiFilters?.lease_end_to)
-      query = query.lte("lease_end", aiFilters.lease_end_to);
-
-    /* ============================================================
-       🔍 Traditional Search Fallback
-    ============================================================ */
-    if (search && !aiFilters) {
-      const term = `%${search}%`;
-      query = query.or(
-        `tenant.ilike.${term},landlord.ilike.${term},property_name.ilike.${term},comments.ilike.${term}`
-      );
+      query = query.or(orFilter);
     }
 
     query = query
-      .order(sortKey, { ascending: sortOrder === "asc" })
-      .range(offset, offset + pageSize - 1);
+      .order(field, { ascending: sortOrder === "asc" })
+      .range(offset, offset + limit - 1);
 
-    /* ============================================================
-       ▶ Execute
-    ============================================================ */
     const { data, count, error } = await query;
 
-    if (error) {
-      console.error("Lease List Error:", error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
+    if (error)
+      return NextResponse.json({
+        success: false,
+        message: error.message,
+      });
 
-    await audit(
-      session,
-      req,
-      aiFilters
-        ? `AI lease search: "${search}"`
-        : "Viewed lease list"
-    );
+    await audit(session, req, "Viewed lease list");
 
     return NextResponse.json({
-      mode: aiFilters ? "ai" : "traditional",
-      extracted_filters: aiFilters,
+      success: true,
+      mode: "traditional",
       data: data ?? [],
       total: count ?? 0,
       page,
-      pageSize,
+      limit,
     });
+
   } catch (err: any) {
-    console.error("Lease API Fatal Error:", err);
+    console.error("🔥 Lease API Fatal Error:", err);
+
     return NextResponse.json(
-      { error: err.message || "Unexpected server error" },
+      {
+        success: false,
+        message: err.message,
+      },
       { status: 500 }
     );
   }

@@ -188,3 +188,96 @@ export async function GET(req: Request) {
     );
   }
 }
+
+export async function DELETE(req: Request) {
+  try {
+    // 1️⃣ Validate session
+    const session = await getServerSession(authOptions);
+    const user = session?.user;
+
+    if (!user) {
+      return NextResponse.json(
+        { success: false, message: "Unauthorized" },
+        { status: 401 }
+      );
+    }
+
+    // 2️⃣ Get document id
+    const { searchParams } = new URL(req.url);
+    const documentId = searchParams.get("id");
+
+    if (!documentId) {
+      return NextResponse.json(
+        { success: false, message: "Document ID required" },
+        { status: 400 }
+      );
+    }
+
+    // 3️⃣ Create RLS client
+    const rlsHeaders = {
+      "x-app-role": user.role,
+      "x-user-id": user.id,
+      "x-account-id": user.accountId ?? "",
+    };
+
+    const supabase = createRlsClient(rlsHeaders);
+
+    // 4️⃣ Get document first (for audit + file deletion)
+    const { data: doc, error: fetchError } = await supabase
+      .from("document")
+      .select("*")
+      .eq("document_id", documentId)
+      .single();
+
+    if (fetchError || !doc) {
+      return NextResponse.json(
+        { success: false, message: "Document not found" },
+        { status: 404 }
+      );
+    }
+
+    // 5️⃣ Delete document
+    const { error: deleteError } = await supabase
+      .from("document")
+      .delete()
+      .eq("document_id", documentId);
+
+    if (deleteError) {
+      console.error(deleteError);
+      return NextResponse.json(
+        { success: false, message: deleteError.message },
+        { status: 500 }
+      );
+    }
+
+    // 6️⃣ Audit Trail
+    await logAuditTrail({
+      userId: user.id,
+      username: user.username,
+      role: user.role,
+      actionType: "DELETE",
+      tableName: "document",
+      recordId: documentId,
+      description: `Deleted document: ${doc.file_url}`,
+      ipAddress: req.headers.get("x-forwarded-for") ?? "N/A",
+      userAgent: req.headers.get("user-agent") ?? "Unknown",
+    });
+
+    return NextResponse.json({
+      success: true,
+      message: "Document deleted successfully",
+    });
+
+  } catch (err: any) {
+    console.error(err);
+
+    return NextResponse.json(
+      {
+        success: false,
+        message: err.message || "Unexpected server error",
+      },
+      { status: 500 }
+    );
+  }
+}
+

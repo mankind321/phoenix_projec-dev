@@ -8,6 +8,7 @@ import {
   ChevronLeft,
   ChevronRight,
   FileText,
+  Trash2,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -29,6 +30,7 @@ import {
   flexRender,
   ColumnDef,
 } from "@tanstack/react-table";
+import { Can } from "./can";
 
 export default function DocumentListTab() {
   // ------------------------------
@@ -86,16 +88,37 @@ export default function DocumentListTab() {
   // DOWNLOAD (MOVED HERE)
   // ------------------------------
   function normalizeGsUrl(url: string) {
-    return url.replace(
-      `gs://${process.env.NEXT_PUBLIC_GCP_BUCKET}/`,
-      ""
-    );
+    return url.replace(`gs://${process.env.NEXT_PUBLIC_GCP_BUCKET}/`, "");
   }
+
+  const handleDelete = useCallback(
+    async (documentId: string) => {
+      if (!confirm("Are you sure you want to delete this document?")) return;
+
+      try {
+        const res = await fetch(`/api/document?id=${documentId}`, {
+          method: "DELETE",
+        });
+
+        const data = await res.json();
+
+        if (!data.success) throw new Error(data.message);
+
+        toast.success("Document deleted successfully");
+
+        // reload list
+        loadDocuments();
+      } catch (err: any) {
+        toast.error(err.message || "Failed to delete document");
+      }
+    },
+    [loadDocuments],
+  );
 
   const handleDownload = useCallback((url: string) => {
     const clean = normalizeGsUrl(url);
     window.location.href = `/api/gcp/download?path=${encodeURIComponent(
-      clean
+      clean,
     )}`;
   }, []);
 
@@ -139,25 +162,39 @@ export default function DocumentListTab() {
       {
         accessorKey: "uploaded_on",
         header: "Date",
-        cell: ({ row }) =>
-          new Date(row.original.uploaded_on).toLocaleString(),
+        cell: ({ row }) => new Date(row.original.uploaded_on).toLocaleString(),
       },
       {
         id: "actions",
         header: "Action",
         cell: ({ row }) => (
-          <Button
-            size="sm"
-            onClick={() => handleDownload(row.original.file_url)}
-            className="flex items-center gap-1 bg-blue-700 hover:bg-blue-400 text-white"
-          >
-            <Download className="w-4 h-4" />
-            Download
-          </Button>
+          <div className="flex gap-2">
+            {/* Download */}
+            <Button
+              size="sm"
+              onClick={() => handleDownload(row.original.file_url)}
+              className="flex items-center gap-1 bg-blue-700 hover:bg-blue-400 text-white"
+            >
+              <Download className="w-4 h-4" />
+              Download
+            </Button>
+
+            {/* Delete */}
+            <Can role={["Admin", "Manager"]}>
+              <Button
+                size="sm"
+                onClick={() => handleDelete(row.original.document_id)}
+                className="flex items-center gap-1 bg-red-700 hover:bg-red-500 text-white"
+              >
+                <Trash2 className="w-4 h-4" />
+                Delete
+              </Button>
+            </Can>
+          </div>
         ),
       },
     ],
-    [handleDownload]
+    [handleDelete, handleDownload],
   );
 
   const table = useReactTable({
@@ -174,7 +211,7 @@ export default function DocumentListTab() {
       {/* Search + Filters */}
       <div className="flex items-center justify-between mb-4">
         <div className="relative w-100">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-5 w-5" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-5 w-5 mt-1" />
           <Input
             placeholder="Search..."
             value={search}
@@ -234,7 +271,7 @@ export default function DocumentListTab() {
                   <TableHead key={header.id}>
                     {flexRender(
                       header.column.columnDef.header,
-                      header.getContext()
+                      header.getContext(),
                     )}
                   </TableHead>
                 ))}
@@ -245,7 +282,10 @@ export default function DocumentListTab() {
           <TableBody>
             {loadingList ? (
               <TableRow>
-                <TableCell colSpan={columns.length} className="text-center py-8">
+                <TableCell
+                  colSpan={columns.length}
+                  className="text-center py-8"
+                >
                   Loading…
                 </TableCell>
               </TableRow>
@@ -256,7 +296,7 @@ export default function DocumentListTab() {
                     <TableCell key={cell.id}>
                       {flexRender(
                         cell.column.columnDef.cell,
-                        cell.getContext()
+                        cell.getContext(),
                       )}
                     </TableCell>
                   ))}
@@ -264,7 +304,10 @@ export default function DocumentListTab() {
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={columns.length} className="text-center py-6">
+                <TableCell
+                  colSpan={columns.length}
+                  className="text-center py-6"
+                >
                   No documents found.
                 </TableCell>
               </TableRow>

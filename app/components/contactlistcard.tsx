@@ -148,8 +148,9 @@ export default function ContactTable() {
   const [totalPages, setTotalPages] = React.useState(1);
 
   const [deleteOpen, setDeleteOpen] = React.useState(false);
-  const [selectedContact, setSelectedContact] =
-    React.useState<Contact | null>(null);
+  const [selectedContact, setSelectedContact] = React.useState<Contact | null>(
+    null,
+  );
 
   /* ------------------ FETCH DATA ---------------------- */
   const loadContacts = React.useCallback(async () => {
@@ -160,8 +161,8 @@ export default function ContactTable() {
 
       const res = await fetch(
         `/api/contacts?page=${page}&pageSize=${pageSize}&search=${encodeURIComponent(
-          globalFilter
-        )}`
+          globalFilter,
+        )}`,
       );
 
       if (!res.ok) throw new Error("Failed to load contacts");
@@ -188,10 +189,12 @@ export default function ContactTable() {
         id: "icon",
         header: "",
         size: 40,
+        minSize: 40,
+        maxSize: 40,
         enableSorting: false,
         cell: () => (
-          <div className="flex justify-center">
-            <Contact2 className="w-5 h-5 text-gray-500" />
+          <div className="flex justify-center w-[40px]">
+            <Contact2 className="w-4 h-4 text-gray-500 flex-shrink-0" />
           </div>
         ),
       },
@@ -201,42 +204,61 @@ export default function ContactTable() {
         header: ({ column }) => (
           <Button
             variant="ghost"
-            onClick={() =>
-              column.toggleSorting(column.getIsSorted() === "asc")
-            }
+            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
           >
             Broker Name
             <ArrowUpDown className="ml-2 h-4 w-4" />
           </Button>
         ),
+        size: 200,
       },
 
-      { accessorKey: "listing_company", header: "Listing Company" },
-      { accessorKey: "phone", header: "Phone" },
-      { accessorKey: "email", header: "Email" },
+      {
+        accessorKey: "listing_company",
+        header: "Listing Company",
+        size: 200,
+      },
+
+      {
+        accessorKey: "phone",
+        header: "Phone",
+        size: 150,
+      },
+
+      {
+        accessorKey: "email",
+        header: "Email",
+        size: 220,
+      },
 
       {
         accessorKey: "website",
         header: "Website",
-        cell: ({ row }) => (
-          <a
-            href={row.original.website}
-            target="_blank"
-            className="text-blue-600 underline"
-          >
-            {row.original.website}
-          </a>
-        ),
+        size: 180,
+        cell: ({ row }) =>
+          row.original.website ? (
+            <a
+              href={row.original.website}
+              target="_blank"
+              className="text-blue-600 underline truncate block max-w-[180px]"
+            >
+              {row.original.website}
+            </a>
+          ) : (
+            <span className="text-gray-400">—</span>
+          ),
       },
 
       {
         id: "actions",
-        header: () => <div className="text-right">Actions</div>,
+        header: () => (
+          <div className="text-right w-[120px] min-w-[120px]">Actions</div>
+        ),
         cell: ({ row }) => {
           const item = row.original;
 
           return (
-            <div className="flex justify-end gap-2">
+            <div className="flex justify-end gap-2 w-[120px] min-w-[120px]">
               <Button
                 size="sm"
                 variant="outline"
@@ -246,8 +268,8 @@ export default function ContactTable() {
               >
                 <Edit size={16} />
               </Button>
-              
-              <Can role={["Admin","Manager"]}>
+
+              <Can role={["Admin", "Manager"]}>
                 <Button
                   size="sm"
                   variant="destructive"
@@ -264,7 +286,7 @@ export default function ContactTable() {
         },
       },
     ],
-    [router]
+    [router],
   );
 
   /* ------------------ TABLE INSTANCE ---------------------- */
@@ -285,7 +307,6 @@ export default function ContactTable() {
   /* ------------------ RENDER ---------------------- */
   return (
     <div className="w-11/12 mx-auto mt-6 space-y-6">
-
       {/* HEADER */}
       <div className="flex flex-col md:flex-row justify-between items-center gap-3 pb-4">
         <div>
@@ -321,17 +342,21 @@ export default function ContactTable() {
       {/* ============================= */}
       {/* TABLE — MATCH DOCUMENT STYLE */}
       {/* ============================= */}
-      <div className="overflow-x-auto border border-gray-200 bg-white rounded-lg shadow-sm">
-        <Table>
+      <div className="w-full border border-gray-200 bg-white rounded-lg shadow-sm overflow-hidden">
+        <Table className="w-full">
           <TableHeader className="bg-gray-100">
             {table.getHeaderGroups().map((hg) => (
               <TableRow key={hg.id}>
                 {hg.headers.map((header) => (
                   <TableHead
                     key={header.id}
-                    className="p-3 font-semibold text-gray-700"
+                    className="p-2 font-semibold text-gray-700"
+                    style={{ width: header.getSize() }}
                   >
-                    {flexRender(header.column.columnDef.header, header.getContext())}
+                    {flexRender(
+                      header.column.columnDef.header,
+                      header.getContext(),
+                    )}
                   </TableHead>
                 ))}
               </TableRow>
@@ -355,8 +380,11 @@ export default function ContactTable() {
                   className="border-t hover:bg-gray-50 transition-colors"
                 >
                   {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id} className="p-3">
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    <TableCell key={cell.id} className="p-2 max-w-0 truncate">
+                      {flexRender(
+                        cell.column.columnDef.cell,
+                        cell.getContext(),
+                      )}
                     </TableCell>
                   ))}
                 </TableRow>
@@ -405,7 +433,7 @@ export default function ContactTable() {
           </Button>
         </div>
       </div>
-      
+
       <DeleteContactModal
         open={deleteOpen}
         onClose={() => setDeleteOpen(false)}

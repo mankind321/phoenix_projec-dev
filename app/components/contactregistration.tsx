@@ -59,8 +59,8 @@ interface ContactFormData {
   broker_name: string;
   phone: string;
   email: string;
-  website: string;
-  comments: string;
+  website: string | null;
+  comments: string | null;
   unique_id?: string;
 }
 
@@ -244,10 +244,16 @@ export default function ContactFormPage() {
     try {
       const payload = {
         ...form,
+
+        // normalize optional fields
+        website: form.website?.trim() || null,
+        comments: form.comments?.trim() || null,
+
         property_id: selectedProperty || null,
         lease_id: selectedLease || null,
-        relation_text: relationText || null,
-        relation_comment: relationComment || null,
+
+        relation_text: relationText.trim() || null,
+        relation_comment: relationComment.trim() || null,
       };
 
       const url = isEditMode ? `/api/contacts/${contactId}` : "/api/contacts";
@@ -367,11 +373,11 @@ export default function ContactFormPage() {
             <div>
               <Label className="flex items-center gap-2">
                 <Globe className="h-4 w-4 text-gray-500" />
-                Website <span className="text-red-500">*</span>
+                Website
               </Label>
               <Input
                 name="website"
-                value={form.website}
+                value={form.website ?? ""}
                 onChange={handleChange}
                 placeholder="https://example.com"
               />
@@ -479,7 +485,7 @@ export default function ContactFormPage() {
             <Label className="mb-2">Contact Comments</Label>
             <textarea
               name="comments"
-              value={form.comments}
+              value={form.comments ?? ""}
               onChange={handleChange}
               rows={4}
               className="w-full rounded-md border border-gray-300 bg-white px-3 py-3 text-sm shadow-sm focus:ring-2 focus:ring-blue-500 resize-none"

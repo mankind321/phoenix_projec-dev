@@ -8,7 +8,7 @@ import { randomUUID } from "crypto";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
 );
 
 export const authOptions: AuthOptions = {
@@ -24,8 +24,8 @@ export const authOptions: AuthOptions = {
         const ip =
           req?.headers?.["x-forwarded-for"]?.toString()?.split(",")[0] ??
           "Unknown";
-        const userAgent =
-          req?.headers?.["user-agent"]?.toString() ?? "Unknown";
+
+        const userAgent = req?.headers?.["user-agent"]?.toString() ?? "Unknown";
 
         // ----------------------------------------
         // 1️⃣ Validate credentials
@@ -41,7 +41,8 @@ export const authOptions: AuthOptions = {
             ipAddress: ip,
             userAgent,
           });
-          return null;
+
+          throw new Error("MISSING_CREDENTIALS");
         }
 
         // ----------------------------------------
@@ -49,22 +50,25 @@ export const authOptions: AuthOptions = {
         // ----------------------------------------
         const { data: userRecord } = await supabase
           .from("useraccountaccess")
-          .select(`
-            userid,
-            username,
-            role,
-            password_hash,
-            license_number,
-            profile_image_url,
-            first_name,
-            middle_name,
-            last_name,
-            accountid,
-            manager_id
-          `)
+          .select(
+            `
+              userid,
+              username,
+              role,
+              password_hash,
+              license_number,
+              profile_image_url,
+              first_name,
+              middle_name,
+              last_name,
+              accountid,
+              manager_id
+            `,
+          )
           .eq("username", credentials.username)
           .maybeSingle();
 
+        // ❌ USER NOT FOUND
         if (!userRecord) {
           await logAuditTrail({
             userId: null,
@@ -76,7 +80,8 @@ export const authOptions: AuthOptions = {
             ipAddress: ip,
             userAgent,
           });
-          return null;
+
+          throw new Error("USER_NOT_FOUND");
         }
 
         // ----------------------------------------
@@ -84,9 +89,10 @@ export const authOptions: AuthOptions = {
         // ----------------------------------------
         const validPass = await bcrypt.compare(
           credentials.password,
-          userRecord.password_hash
+          userRecord.password_hash,
         );
 
+        // ❌ INVALID PASSWORD
         if (!validPass) {
           await logAuditTrail({
             userId: userRecord.userid,
@@ -98,7 +104,8 @@ export const authOptions: AuthOptions = {
             ipAddress: ip,
             userAgent,
           });
-          return null;
+
+          throw new Error("INVALID_PASSWORD");
         }
 
         // ----------------------------------------
@@ -112,9 +119,18 @@ export const authOptions: AuthOptions = {
           .maybeSingle();
 
         if (statusRow?.account_status === "online") {
-          const err = new Error("ACCOUNT_ALREADY_LOGGED_IN");
-          (err as any).code = "ACCOUNT_ALREADY_LOGGED_IN";
-          throw err;
+          await logAuditTrail({
+            userId: userRecord.userid,
+            username: userRecord.username,
+            role: userRecord.role,
+            actionType: "LOGIN_FAILED",
+            tableName: "useraccountaccess",
+            description: "Account already logged in",
+            ipAddress: ip,
+            userAgent,
+          });
+
+          throw new Error("ACCOUNT_ALREADY_LOGGED_IN");
         }
 
         // ----------------------------------------

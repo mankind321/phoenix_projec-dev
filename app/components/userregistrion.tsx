@@ -264,8 +264,23 @@ const UserRegistrationForm: React.FC = () => {
       confirmPassword: !isEditMode && !accountData.confirmPassword,
     };
 
+    // Check required fields first
     if (Object.values(requiredErrors).some(Boolean)) {
       toast.error("Please fill out all required fields.");
+      return;
+    }
+
+    // ✅ NEW: Password mismatch validation
+    // Only validate if user entered a password OR if creating new user
+    const isPasswordEntered =
+      accountData.password.trim().length > 0 ||
+      accountData.confirmPassword.trim().length > 0;
+
+    if (
+      (!isEditMode || isPasswordEntered) &&
+      accountData.password !== accountData.confirmPassword
+    ) {
+      toast.error("Password and Confirm Password do not match.");
       return;
     }
 
@@ -391,7 +406,9 @@ const UserRegistrationForm: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {/* First Name */}
             <div>
-              <Label htmlFor="firstName">First Name<span className="text-red-500">*</span></Label>
+              <Label htmlFor="firstName">
+                First Name<span className="text-red-500">*</span>
+              </Label>
               <div className="relative">
                 <Input
                   id="firstName"
@@ -420,7 +437,9 @@ const UserRegistrationForm: React.FC = () => {
 
             {/* Last Name */}
             <div>
-              <Label htmlFor="lastName">Last Name<span className="text-red-500">*</span></Label>
+              <Label htmlFor="lastName">
+                Last Name<span className="text-red-500">*</span>
+              </Label>
               <Input
                 id="lastName"
                 name="lastName"
@@ -470,7 +489,9 @@ const UserRegistrationForm: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Email */}
             <div>
-              <Label htmlFor="email">Email<span className="text-red-500">*</span></Label>
+              <Label htmlFor="email">
+                Email<span className="text-red-500">*</span>
+              </Label>
               <div className="relative">
                 <Input
                   id="email"
@@ -487,7 +508,9 @@ const UserRegistrationForm: React.FC = () => {
 
             {/* Mobile */}
             <div>
-              <Label htmlFor="mobile">Mobile Number<span className="text-red-500">*</span></Label>
+              <Label htmlFor="mobile">
+                Mobile Number<span className="text-red-500">*</span>
+              </Label>
               <div className="relative">
                 <Input
                   id="mobile"
@@ -565,7 +588,9 @@ const UserRegistrationForm: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Username */}
             <div>
-              <Label htmlFor="username">Username<span className="text-red-500">*</span></Label>
+              <Label htmlFor="username">
+                Username<span className="text-red-500">*</span>
+              </Label>
               <Input
                 id="username"
                 name="username"
@@ -578,7 +603,9 @@ const UserRegistrationForm: React.FC = () => {
 
             {/* Role */}
             <div>
-              <Label htmlFor="role">Role<span className="text-red-500">*</span></Label>
+              <Label htmlFor="role">
+                Role<span className="text-red-500">*</span>
+              </Label>
               <select
                 id="role"
                 name="role"
@@ -599,7 +626,9 @@ const UserRegistrationForm: React.FC = () => {
             {/* MANAGER (Agent only) */}
             {accountData.role === "Agent" && (
               <div className="col-span-2">
-                <Label htmlFor="managerId">Manager<span className="text-red-500">*</span></Label>
+                <Label htmlFor="managerId">
+                  Manager<span className="text-red-500">*</span>
+                </Label>
                 <select
                   id="managerId"
                   name="managerId"
@@ -622,7 +651,9 @@ const UserRegistrationForm: React.FC = () => {
 
             {/* Password */}
             <div>
-              <Label htmlFor="password">Password<span className="text-red-500">*</span></Label>
+              <Label htmlFor="password">
+                Password<span className="text-red-500">*</span>
+              </Label>
               <Input
                 type="password"
                 id="password"
@@ -638,7 +669,9 @@ const UserRegistrationForm: React.FC = () => {
 
             {/* Confirm Password */}
             <div>
-              <Label htmlFor="confirmPassword">Confirm Password<span className="text-red-500">*</span></Label>
+              <Label htmlFor="confirmPassword">
+                Confirm Password<span className="text-red-500">*</span>
+              </Label>
               <Input
                 type="password"
                 id="confirmPassword"

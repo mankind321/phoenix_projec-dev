@@ -17,20 +17,115 @@ function createRlsClient(headers: Record<string, string>) {
 }
 
 /* ==========================================================
-   🗑 DELETE — Error Monitoring Record (Next.js 14 FIX)
+   📥 GET — Error Monitoring Record
+========================================================== */
+export async function GET(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    // ✅ unwrap params (Next.js 14 requirement)
+    const { id } = await params;
+
+    // 1️⃣ Validate session
+    const session = await getServerSession(authOptions);
+
+    if (!session?.user) {
+      return NextResponse.json(
+        { success: false, error: "Unauthorized" },
+        { status: 401 }
+      );
+    }
+
+    // 2️⃣ Create RLS client
+    const rlsHeaders = {
+      "x-app-role": session.user.role,
+      "x-user-id": session.user.id,
+      "x-account-id": session.user.accountId ?? "",
+    };
+
+    const supabase = createRlsClient(rlsHeaders);
+
+    // 3️⃣ Fetch document registry record
+    const { data, error } = await supabase
+      .from("document_registry")
+      .select("*")
+      .eq("file_id", id)
+      .single();
+
+    if (error) {
+      console.error("Fetch Error:", error);
+
+      return NextResponse.json(
+        {
+          success: false,
+          error: error.message,
+        },
+        { status: 500 }
+      );
+    }
+
+    if (!data) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Record not found",
+        },
+        { status: 404 }
+      );
+    }
+
+    // 4️⃣ Audit log (VIEW action)
+    await logAuditTrail({
+      userId: session.user.id,
+      username: session.user.username,
+      role: session.user.role,
+      actionType: "VIEW",
+      tableName: "document_registry",
+      description: `Viewed error monitoring record (${id})`,
+      ipAddress: req.headers.get("x-forwarded-for") ?? "N/A",
+      userAgent: req.headers.get("user-agent") ?? "Unknown",
+    });
+
+    // 5️⃣ Return formatted response
+    return NextResponse.json({
+      success: true,
+      data: {
+        document: data,
+      },
+    });
+
+  } catch (err: any) {
+    console.error("GET Error:", err);
+
+    return NextResponse.json(
+      {
+        success: false,
+        error: err.message || "Unexpected server error",
+      },
+      { status: 500 }
+    );
+  }
+}
+
+
+/* ==========================================================
+   🗑 DELETE — Error Monitoring Record
 ========================================================== */
 export async function DELETE(
   req: Request,
-  { params }: { params: Promise<{ id: string }> } // ✅ params is async
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // ✅ MUST unwrap params
     const { id } = await params;
 
-    // 1️⃣ Session check
     const session = await getServerSession(authOptions);
+
     if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return NextResponse.json(
+        { success: false, error: "Unauthorized" },
+        { status: 401 }
+      );
     }
 
     const rlsHeaders = {
@@ -41,7 +136,6 @@ export async function DELETE(
 
     const supabase = createRlsClient(rlsHeaders);
 
-    // 2️⃣ Delete
     const { error } = await supabase
       .from("document_registry")
       .delete()
@@ -49,13 +143,16 @@ export async function DELETE(
 
     if (error) {
       console.error("Delete Error:", error);
+
       return NextResponse.json(
-        { success: false, error: error.message },
+        {
+          success: false,
+          error: error.message,
+        },
         { status: 500 }
       );
     }
 
-    // 3️⃣ Audit
     await logAuditTrail({
       userId: session.user.id,
       username: session.user.username,
@@ -68,10 +165,15 @@ export async function DELETE(
     });
 
     return NextResponse.json({ success: true });
+
   } catch (err: any) {
     console.error("DELETE Error:", err);
+
     return NextResponse.json(
-      { error: err.message || "Unexpected server error" },
+      {
+        success: false,
+        error: err.message || "Unexpected server error",
+      },
       { status: 500 }
     );
   }

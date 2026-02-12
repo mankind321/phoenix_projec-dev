@@ -65,11 +65,36 @@ export function LoginForm() {
       if (!res || !res.ok) {
         sessionStorage.removeItem("isLoggingIn");
 
-        if (res?.error === "ACCOUNT_ALREADY_LOGGED_IN") {
-          showErrorToast("Login Rejected", "Account is already logged in.");
-        } else {
-          showErrorToast("Error", "Invalid credentials.");
+        switch (res?.error) {
+          case "USER_NOT_FOUND":
+            showErrorToast("Login Failed", "Username does not exist.");
+
+            // ✅ Clear username AND password
+            setUserName("");
+            setPassword("");
+            break;
+
+          case "INVALID_PASSWORD":
+            showErrorToast("Login Failed", "Password incorrect.");
+
+            // ✅ Clear ONLY password
+            setPassword("");
+            break;
+
+          case "ACCOUNT_ALREADY_LOGGED_IN":
+            showErrorToast("Login Rejected", "Account is already logged in.");
+
+            // optional: clear password for security
+            setPassword("");
+            break;
+
+          default:
+            showErrorToast("Login Failed", "Invalid username or password.");
+
+            // optional fallback
+            setPassword("");
         }
+
         return;
       }
 
@@ -123,6 +148,7 @@ export function LoginForm() {
               <Input
                 id="username"
                 type="text"
+                placeholder="username"
                 value={username}
                 onChange={(e) => setUserName(e.target.value)}
                 required

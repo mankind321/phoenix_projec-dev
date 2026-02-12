@@ -27,32 +27,88 @@ function createRlsClient(headers: Record<string, string>) {
   );
 }
 
+// ----------------------------------------------
+// AI QUERY DETECTION (FINAL PRODUCTION VERSION)
+// ----------------------------------------------
 function isAiQuery(text: string | null): boolean {
   if (!text) return false;
 
-  const t = text.toLowerCase().trim();
+  // Normalize input
+  const t = text.toLowerCase().trim().replace(/\s+/g, " "); // collapse multiple spaces
 
-  if (!t.includes(" ")) return false;
+  console.log("🧠 isAiQuery normalized input:", JSON.stringify(t));
 
+  // -------------------------------------------------
+  // RULE 1: Detect address patterns → NOT AI SEARCH
+  // Examples:
+  //  - "351 quarry"
+  //  - "123 main street"
+  //  - "1000 market st"
+  // -------------------------------------------------
+  const addressPattern = /^[\d]+\s+[a-z]/i;
+  if (addressPattern.test(t)) {
+    console.log("📍 Detected address pattern → Traditional search");
+    return false;
+  }
+
+  // -------------------------------------------------
+  // RULE 2: Detect natural-language AI intent keywords
+  // -------------------------------------------------
   const aiKeywords = [
     "near",
+    "nearby",
     "around",
     "within",
-    "from",
-    "close to",
-    "beside",
-    "next to",
-    "in ",
-    "km",
-    "m ",
-    "meter",
-    "mile",
     "radius",
+    "distance",
+    "close to",
+    "next to",
+    "beside",
+    "km",
+    "kilometer",
+    "kilometers",
+    "mile",
+    "miles",
+    "meter",
+    "meters",
+    "walking distance",
+    "driving distance",
+
+    // Intent-based phrases
+    "find",
+    "show me",
+    "search for",
+    "looking for",
+    "properties in",
+    "apartments in",
+    "buildings in",
+    "offices in",
+    "commercial in",
+    "for sale in",
+    "for rent in",
   ];
 
-  if (aiKeywords.some((k) => t.includes(k))) return true;
-  if (t.split(" ").length >= 3) return true;
+  const hasKeyword = aiKeywords.some((keyword) => t.includes(keyword));
 
+  if (hasKeyword) {
+    console.log("🤖 AI intent keyword detected → AI search");
+    return true;
+  }
+
+  // -------------------------------------------------
+  // RULE 3: Detect question-based AI queries
+  // -------------------------------------------------
+  const questionPattern = /^(where|find|show|list|get|search|what|which)\b/i;
+
+  if (questionPattern.test(t)) {
+    console.log("🤖 AI question pattern detected → AI search");
+    return true;
+  }
+
+  // -------------------------------------------------
+  // RULE 4: Everything else → Traditional search
+  // -------------------------------------------------
+  console.log("📄 No AI intent detected → Traditional search");
   return false;
 }
 
@@ -219,19 +275,25 @@ User text: "${prompt}"
     //  - regions (Asia)
     //  - full state names (Texas)
     // -------------------------------------------------
-    const isValidState =
-      typeof parsed.state === "string" &&
-      /^[A-Za-z]{2}$/.test(parsed.state.trim());
+    // Normalize state FIRST
+    const normalizedState = await normalizeState(parsed.state ?? null);
+
+    // Update parsed.state with normalized version
+    parsed.state = normalizedState;
+
+    // Validate AFTER normalization
+    const isValidState = normalizedState !== null;
 
     if (!parsed.city && !isValidState) {
-      console.warn("⚠️ AI query too broad — country or invalid state", {
+      console.warn("⚠️ AI query too broad — invalid or unsupported state", {
         prompt,
         parsed,
+        normalizedState,
       });
 
       return {
-        location: null, // 🚫 prevent geocoding
-        radius_m: null, // 🚫 prevent radius fallback
+        location: null,
+        radius_m: null,
         property_type: parsed.property_type ?? null,
         min_price: parsed.min_price ?? null,
         max_price: parsed.max_price ?? null,
@@ -346,8 +408,19 @@ export async function GET(req: Request) {
     const supabase = createRlsClient(rlsHeaders);
     const { searchParams } = new URL(req.url);
 
-    const search = searchParams.get("search") || "";
+    const rawSearch = searchParams.get("search") || "";
     const queryText = searchParams.get("query");
+
+    // Decide which to use
+    const search =
+      rawSearch || (queryText && !isAiQuery(queryText) ? queryText : "");
+
+    console.log("🧾 Search Parameter Resolution:", {
+      rawSearch,
+      queryText,
+      finalSearchUsed: search,
+    });
+
     const page = Number(searchParams.get("page")) || 1;
     const limit = Number(searchParams.get("limit")) || 9;
     const offset = (page - 1) * limit;
@@ -480,50 +553,92 @@ export async function GET(req: Request) {
       .from("vw_property_with_image")
       .select(
         `
-        property_id,
-        name,
-        landlord,
-        address,
-        city,
-        state,
-        type,
-        status,
-        price,
-        cap_rate,
-        file_url,
-        latitude,
-        longitude
-      `,
+      property_id,
+      name,
+      landlord,
+      address,
+      city,
+      state,
+      type,
+      status,
+      price,
+      cap_rate,
+      file_url,
+      latitude,
+      longitude
+    `,
         { count: "exact" },
       )
       .neq("status", "Review");
 
-    if (search) {
-      console.log("🔍 Applying search filter:", search);
-      const safe = search.trim();
-      query = query.or(
-        `name.ilike.%${safe}%,address.ilike.%${safe}%,city.ilike.%${safe}%,state.ilike.%${safe}%,type.ilike.%${safe}%,status.ilike.%${safe}%`,
-      );
+    // -------------------------------------------------------
+    // APPLY SEARCH FILTER SAFELY
+    // -------------------------------------------------------
+    if (search && search.trim().length > 0) {
+      const raw = search;
+
+      const safe = raw
+        .trim()
+        .replace(/[%_]/g, "") // remove wildcard breakers
+        .replace(/,/g, "") // remove commas
+        .replace(/\s+/g, " "); // normalize spaces
+
+      const orFilter = [
+        `name.ilike.%${safe}%`,
+        `address.ilike.%${safe}%`,
+        `city.ilike.%${safe}%`,
+        `state.ilike.%${safe}%`,
+        `type.ilike.%${safe}%`,
+        `status.ilike.%${safe}%`,
+      ].join(",");
+
+      // -------------------------------
+      // DEBUG LOGGING
+      // -------------------------------
+      console.log("🔍 Traditional Search Debug:", {
+        raw_input: raw,
+        sanitized_input: safe,
+        or_filter_string: orFilter,
+      });
+
+      query = query.or(orFilter);
     }
 
+    // -------------------------------------------------------
+    // SORTING
+    // -------------------------------------------------------
     query = query.order(field, { ascending: sortOrder === "asc" });
+
+    // -------------------------------------------------------
+    // PAGINATION
+    // -------------------------------------------------------
     query = query.range(offset, offset + limit - 1);
 
+    // -------------------------------------------------------
+    // EXECUTE QUERY
+    // -------------------------------------------------------
     const { data, count, error } = await query;
 
-    console.log("📊 Initial query result:", {
-      rows: data?.length ?? 0,
-      count,
-      error: error?.message,
+    // -------------------------------
+    // DEBUG RESULT LOGGING
+    // -------------------------------
+    console.log("📊 Traditional Query Result:", {
+      returned_rows: data?.length ?? 0,
+      total_count: count ?? 0,
+      error: error?.message ?? null,
     });
 
     if (error) {
+      console.error("❌ Traditional Query Error:", error);
       return NextResponse.json({
         success: false,
         message: error.message,
       });
     }
 
+    // -------------------------------------------------------
+    // SIGN URL PROCESSING
+    // -------------------------------------------------------
     const signedData = await Promise.all(
       (data ?? []).map(async (p: any) => ({
         ...p,
@@ -531,7 +646,14 @@ export async function GET(req: Request) {
       })),
     );
 
-    console.log("✅ Traditional response rows:", signedData.length);
+    // -------------------------------
+    // FINAL RESPONSE LOG
+    // -------------------------------
+    console.log("✅ Traditional Final Response:", {
+      signed_rows: signedData.length,
+      page,
+      limit,
+    });
 
     return NextResponse.json({
       success: true,

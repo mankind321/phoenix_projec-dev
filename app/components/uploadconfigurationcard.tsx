@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 
 import {
@@ -38,6 +38,7 @@ export default function DocumentUploadSection() {
   const [files, setFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
   const [docType, setDocType] = useState("");
+  const [activeTab, setActiveTab] = useState("upload");
 
   const reachedLimit = files.length >= 1000;
   const maxFiles = 1000;
@@ -57,6 +58,13 @@ export default function DocumentUploadSection() {
     "image/gif": "GIF",
     "image/webp": "WEBP",
   };
+
+  useEffect(() => {
+    const savedTab = sessionStorage.getItem("documentsTab");
+    if (savedTab) {
+      setActiveTab(savedTab);
+    }
+  }, []);
 
   const getAllowedFileTypesLabel = () =>
     allowedMimeTypes.map((t) => mimeTypeLabels[t] || t).join(", ");
@@ -145,8 +153,7 @@ export default function DocumentUploadSection() {
                 </div>
               ),
               duration: 12000,
-            }
-            ,
+            },
           );
         } else {
           toast.error("Upload blocked", {
@@ -194,11 +201,10 @@ export default function DocumentUploadSection() {
       console.log(passed);
       if (!passed) {
         setUploading(false);
-        console.log("This is running")
+        console.log("This is running");
         return;
       }
 
-      
       const toastId = toast.loading(`Uploading 0 of ${files.length} files...`);
 
       // STEP 2: UPLOAD FILES
@@ -289,7 +295,14 @@ export default function DocumentUploadSection() {
         </p>
       </div>
 
-      <Tabs defaultValue="upload" className="w-full">
+      <Tabs
+        value={activeTab}
+        onValueChange={(value) => {
+          setActiveTab(value);
+          sessionStorage.setItem("documentsTab", value);
+        }}
+        className="w-full"
+      >
         <TabsList className="mb-6">
           <TabsTrigger value="upload">Upload Document</TabsTrigger>
 

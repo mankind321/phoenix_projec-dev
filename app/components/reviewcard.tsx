@@ -1,27 +1,16 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogHeader,
-  DialogContent,
-  DialogFooter,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { toast } from "sonner";
 
 import {
-  ChevronDown,
-  ChevronUp,
   Building2,
   Loader2,
   Search as SearchIcon,
-  CheckCircle,
-  XCircle,
+  Eye,
 } from "lucide-react";
 
 type Property = {
@@ -36,34 +25,28 @@ type Property = {
   sale_date?: string;
   comments?: string;
 
-  // ✅ Audit / Creator info (from vw_property_review)
   creator_username?: string;
   creator_fullname?: string;
   creator_role?: string;
   manager_fullname?: string;
   created_at?: string;
 
-  [key: string]: any;
+  type?: string;
+  cap_rate?: number | string;
+  latitude?: number | string;
+  longitude?: number | string;
 };
 
 export default function ReviewPropertyListPage() {
-  const [properties, setProperties] = useState<Property[]>([]);
-  const [expanded, setExpanded] = useState<string | null>(null);
+  const router = useRouter();
 
+  const [properties, setProperties] = useState<Property[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [isProcessing, setIsProcessing] = useState(false);
 
   const [page, setPage] = useState(1);
   const [pageSize] = useState(20);
   const [totalPages, setTotalPages] = useState(1);
   const [search, setSearch] = useState("");
-
-  // Modal
-  const [showConfirm, setShowConfirm] = useState(false);
-  const [pendingAction, setPendingAction] = useState<
-    "approve" | "reject" | null
-  >(null);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   // -------------------------------------------------------
   // Fetch Data
@@ -88,85 +71,13 @@ export default function ReviewPropertyListPage() {
     setIsLoading(false);
   }, [page, pageSize, search]);
 
-  // Auto-refresh on changes
   useEffect(() => {
     fetchData();
   }, [fetchData]);
 
-  // reset page on search
   useEffect(() => {
     setPage(1);
   }, [search]);
-
-  // -------------------------------------------------------
-  // Execute Approve / Reject
-  // -------------------------------------------------------
-  async function executeAction() {
-    if (!selectedId || !pendingAction) return;
-
-    setIsProcessing(true);
-    setShowConfirm(false);
-
-    const loadingMessage =
-      pendingAction === "approve"
-        ? "Approving property..."
-        : "Rejecting and deleting property...";
-
-    toast.promise(
-      (async () => {
-        // -------------------------------------------------------
-        // ❌ REJECT FLOW → DELETE PROPERTY ONLY
-        // -------------------------------------------------------
-        if (pendingAction === "reject") {
-          const deleteRes = await fetch(`/api/properties/${selectedId}`, {
-            method: "DELETE",
-          });
-
-          const deleteData = await deleteRes.json();
-          if (!deleteRes.ok) {
-            throw new Error(deleteData.message || "Failed to delete property");
-          }
-
-          return deleteData;
-        }
-
-        // -------------------------------------------------------
-        // ✅ APPROVE FLOW (unchanged)
-        // -------------------------------------------------------
-        const res = await fetch("/api/review/action", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            propertyId: selectedId,
-            action: "approve",
-          }),
-        });
-
-        const data = await res.json();
-        if (!res.ok)
-          throw new Error(data.error || "Failed to approve property");
-
-        return data;
-      })(),
-      {
-        loading: loadingMessage,
-
-        success: async () => {
-          await fetchData(); // refresh list only
-          setIsProcessing(false);
-
-          return pendingAction === "approve"
-            ? "Property approved successfully"
-            : "Property deleted successfully";
-        },
-
-        error:
-          pendingAction === "approve"
-            ? "Failed to approve property"
-            : "Failed to delete property",
-      },
-    );
-  }
 
   // -------------------------------------------------------
   // Badge styling
@@ -178,9 +89,7 @@ export default function ReviewPropertyListPage() {
   // -------------------------------------------------------
   return (
     <div className="w-11/12 mx-auto mt-6 space-y-6">
-      {/* -------------------------------------------------- */}
       {/* Header */}
-      {/* -------------------------------------------------- */}
       <div className="space-y-2">
         <h1 className="text-2xl font-semibold flex items-center gap-2">
           <Building2 className="w-6 h-6 text-gray-700" />
@@ -207,9 +116,7 @@ export default function ReviewPropertyListPage() {
         </div>
       </div>
 
-      {/* -------------------------------------------------- */}
       {/* Results */}
-      {/* -------------------------------------------------- */}
       <div>
         <h2 className="flex items-center gap-2 text-lg font-semibold text-gray-800 mb-3">
           <Building2 className="w-5 h-5 text-gray-600" />
@@ -224,7 +131,9 @@ export default function ReviewPropertyListPage() {
         )}
 
         {!isLoading && properties.length === 0 && (
-          <p className="text-center text-gray-500 py-8">No properties found.</p>
+          <p className="text-center text-gray-500 py-8">
+            No properties found.
+          </p>
         )}
 
         {!isLoading && properties.length > 0 && (
@@ -280,94 +189,22 @@ export default function ReviewPropertyListPage() {
                         ${Number(p.price || 0).toLocaleString()}
                       </p>
 
-                      {/* ACTION BUTTONS */}
+                      {/* VIEW BUTTON */}
                       <div className="flex gap-2 justify-end">
                         <Button
-                          disabled={isProcessing}
-                          className="bg-green-600 hover:bg-green-700 text-white px-4 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                          onClick={() => {
-                            setSelectedId(p.property_id!);
-                            setPendingAction("approve");
-                            setShowConfirm(true);
-                          }}
+                          className="bg-blue-600 hover:bg-blue-700 text-white px-4 flex items-center gap-2"
+                          onClick={() =>
+                            router.push(
+                              `/dashboard/review/${p.property_id}`,
+                            )
+                          }
                         >
-                          <CheckCircle className="w-4 h-4" />
-                          Approve
-                        </Button>
-
-                        <Button
-                          disabled={isProcessing}
-                          className="bg-red-600 hover:bg-red-700 text-white px-4 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                          onClick={() => {
-                            setSelectedId(p.property_id!);
-                            setPendingAction("reject");
-                            setShowConfirm(true);
-                          }}
-                        >
-                          <XCircle className="w-4 h-4" />
-                          Reject
+                          <Eye className="w-4 h-4" />
+                          View
                         </Button>
                       </div>
                     </div>
                   </div>
-
-                  {/* DETAILS */}
-                  <div className="flex justify-between items-center mt-4">
-                    <button
-                      onClick={() => setExpanded(expanded === key ? null : key)}
-                      className="text-sm text-blue-600 flex items-center gap-1 hover:underline"
-                    >
-                      {expanded === key ? (
-                        <>
-                          <ChevronUp className="w-4 h-4" /> Hide Details
-                        </>
-                      ) : (
-                        <>
-                          <ChevronDown className="w-4 h-4" /> View Details
-                        </>
-                      )}
-                    </button>
-                  </div>
-
-                  {expanded === key && (
-                    <div className="mt-4 bg-gray-50 p-4 rounded-lg border text-sm space-y-3">
-                      <p>
-                        <strong>Type:</strong> {p.type ?? "-"}
-                      </p>
-
-                      <p>
-                        <strong>Cap Rate:</strong>{" "}
-                        {p.cap_rate ? `${p.cap_rate}%` : "-"}
-                      </p>
-
-                      <p>
-                        <strong>Latitude:</strong> {p.latitude ?? "-"}
-                      </p>
-
-                      <p>
-                        <strong>Longitude:</strong> {p.longitude ?? "-"}
-                      </p>
-
-                      <p>
-                        <strong>Comments:</strong> {p.comments ?? "—"}
-                      </p>
-
-                      {/* 🔎 AUDIT INFORMATION */}
-                      <hr className="border-gray-200 my-2" />
-
-                      <p>
-                        <strong>Uploaded By:</strong>{" "}
-                        {p.creator_fullname || p.creator_username || "—"}
-                      </p>
-
-                      <p>
-                        <strong>Uploaded At:</strong>{" "}
-                        {p.created_at
-                          ? new Date(p.created_at).toLocaleString()
-                          : "—"}
-                      </p>
-                    </div>
-                  )}
                 </div>
               );
             })}
@@ -397,51 +234,6 @@ export default function ReviewPropertyListPage() {
           </div>
         )}
       </div>
-
-      {/* -------------------------------------------------- */}
-      {/* CONFIRMATION MODAL */}
-      {/* -------------------------------------------------- */}
-      <Dialog open={showConfirm} onOpenChange={setShowConfirm}>
-        <DialogContent className="rounded-xl">
-          <DialogHeader>
-            <DialogTitle>
-              {pendingAction === "approve"
-                ? "Approve this property?"
-                : "Reject and delete this property?"}
-            </DialogTitle>
-          </DialogHeader>
-
-          <p className="text-sm text-gray-600">
-            {pendingAction === "approve"
-              ? "This will mark the property as Active."
-              : "This will permanently delete the property information"}
-          </p>
-
-          <DialogFooter className="mt-4">
-            <Button variant="outline" onClick={() => setShowConfirm(false)}>
-              Cancel
-            </Button>
-
-            <Button
-              disabled={isProcessing}
-              className={
-                pendingAction === "approve"
-                  ? "bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                  : "bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
-              }
-              onClick={executeAction}
-            >
-              {isProcessing ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : pendingAction === "approve" ? (
-                "Confirm Approval"
-              ) : (
-                "Confirm Rejection"
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
