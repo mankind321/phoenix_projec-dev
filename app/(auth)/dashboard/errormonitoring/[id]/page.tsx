@@ -92,10 +92,10 @@ export default function ErrorMonitoringViewPage({
 
       <InfoSection title="Property Information" icon={<Building2 />}>
         <Grid3>
-          <InfoItem label="Property Key" value={document.property_key} />
-          <InfoItem label="Property Name" value={document.property_name} />
-          <InfoItem label="Property Type" value={document.property_type} />
-          <InfoItem label="Property Status" value={document.property_status} />
+          <InfoItem label="Property Key" value={document.property_key?.replace(/[\[\]']/g, "")} />
+          <InfoItem label="Property Name" value={document.property_name?.replace(/[\[\]']/g, "")} />
+          <InfoItem label="Property Type" value={document.property_type?.replace(/[\[\]']/g, "")} />
+          <InfoItem label="Property Status" value={document.property_status?.replace(/[\[\]']/g, "")} />
         </Grid3>
       </InfoSection>
 
@@ -103,18 +103,18 @@ export default function ErrorMonitoringViewPage({
 
       <InfoSection title="Location Information" icon={<MapPinned />}>
         <Grid3>
-          <InfoItem label="Address" value={document.address} />
-          <InfoItem label="Street" value={document.street} />
-          <InfoItem label="City" value={document.city} />
-          <InfoItem label="State" value={document.state} />
-          <InfoItem label="Zip Code" value={document.zip_code} />
-          <InfoItem label="Country" value={document.country} />
+          <InfoItem label="Address" value={document.address?.replace(/[\[\]']/g, "")} />
+          <InfoItem label="Street" value={document.street?.replace(/[\[\]']/g, "")} />
+          <InfoItem label="City" value={document.city?.replace(/[\[\]']/g, "")} />
+          <InfoItem label="State" value={document.state?.replace(/[\[\]']/g, "")} />
+          <InfoItem label="Zip Code" value={document.zip_code?.replace(/[\[\]']/g, "")} />
+          <InfoItem label="Country" value={document.country?.replace(/[\[\]']/g, "")} />
           <InfoItem
             label="Geocoded Address"
-            value={document.geocoded_address}
+            value={document.geocoded_address?.replace(/[\[\]']/g, "")}
           />
-          <InfoItem label="Latitude" value={document.latitude} />
-          <InfoItem label="Longitude" value={document.longitude} />
+          <InfoItem label="Latitude" value={document.latitude?.replace(/[\[\]']/g, "")} />
+          <InfoItem label="Longitude" value={document.longitude?.replace(/[\[\]']/g, "")} />
         </Grid3>
       </InfoSection>
 
@@ -122,11 +122,11 @@ export default function ErrorMonitoringViewPage({
 
       <InfoSection title="Financial Information" icon={<DollarSign />}>
         <Grid3>
-          <InfoItem label="Price" value={document.price} />
-          <InfoItem label="Asking Price" value={document.asking_price} />
-          <InfoItem label="Annual Rent" value={document.annual_rent} />
-          <InfoItem label="Rent PSF" value={document.rent_psf} />
-          <InfoItem label="Cap Rate" value={document.cap_rate} />
+          <InfoItem label="Price" value={document.price?.replace(/[\[\]']/g, "")} />
+          <InfoItem label="Asking Price" value={document.asking_price?.replace(/[\[\]']/g, "")} />
+          <InfoItem label="Annual Rent" value={document.annual_rent?.replace(/[\[\]']/g, "")} />
+          <InfoItem label="Rent PSF" value={document.rent_psf?.replace(/[\[\]']/g, "")} />
+          <InfoItem label="Cap Rate" value={document.cap_rate?.replace(/[\[\]']/g, "")} />
         </Grid3>
       </InfoSection>
 
@@ -134,12 +134,12 @@ export default function ErrorMonitoringViewPage({
 
       <InfoSection title="Lease Information" icon={<Calendar />}>
         <Grid3>
-          <InfoItem label="Lease Start" value={document.lease_start} />
-          <InfoItem label="Lease End" value={document.lease_end} />
-          <InfoItem label="Sale Date" value={document.sale_date} />
+          <InfoItem label="Lease Start" value={document.lease_start?.replace(/[\[\]']/g, "")} />
+          <InfoItem label="Lease End" value={document.lease_end?.replace(/[\[\]']/g, "")} />
+          <InfoItem label="Sale Date" value={document.sale_date?.replace(/[\[\]']/g, "")} />
           <InfoItem
             label="Availability Date"
-            value={document.availability_date}
+            value={document.availability_date?.replace(/[\[\]']/g, "")}
           />
         </Grid3>
       </InfoSection>
