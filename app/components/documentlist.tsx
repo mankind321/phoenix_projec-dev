@@ -245,8 +245,17 @@ export default function DocumentListTab() {
       {
         accessorKey: "file_url",
         header: "Filename",
-        cell: ({ row }) => row.original.file_url?.split("/").pop(),
+        cell: ({ row }) => {
+          const filename = row.original.file_url?.split("/").pop();
+
+          return (
+            <div className="whitespace-normal break-all max-w-[300px]">
+              {filename}
+            </div>
+          );
+        },
       },
+
       {
         accessorKey: "user_name",
         header: "Uploaded By",
@@ -260,11 +269,20 @@ export default function DocumentListTab() {
         header: "Property / Tenant",
         cell: ({ row }) => {
           const doc = row.original;
-          return !doc.property_id && doc.lease_id
-            ? doc.lease_tenant
-            : doc.property_name || "—";
+
+          const value =
+            !doc.property_id && doc.lease_id
+              ? doc.lease_tenant
+              : doc.property_name || "—";
+
+          return (
+            <div className="whitespace-normal break-words max-w-[250px]">
+              {value}
+            </div>
+          );
         },
       },
+
       {
         accessorKey: "uploaded_on",
         header: "Date",
