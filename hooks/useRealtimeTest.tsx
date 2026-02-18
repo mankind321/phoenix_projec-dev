@@ -102,7 +102,7 @@ export function useRealtimeTest(
               // FAILED
               // ========================
               if (row.extraction_status === "FAILED") {
-                const message = `Extraction failed for "${row.file_name ?? "document"}". Check Data in the Erro Document List under Document Page`;
+                const message = `Extraction failed for "${row.file_name ?? "document"}". Please refer to the Error Document List under Document Page to investigate and resolve issues`;
 
                 toast.error(
                   <div
