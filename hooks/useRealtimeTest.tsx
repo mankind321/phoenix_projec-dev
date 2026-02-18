@@ -76,8 +76,8 @@ export function useRealtimeTest(
               // ========================
               if (row.extraction_status === "PASSED") {
                 const message = isRentRoll
-                  ? `Data extraction for "${row.file_name ?? "document"}" completed. Click to view Tenant data.`
-                  : `Data extraction for "${row.file_name ?? "document"}" completed. Click to view Review page.`;
+                  ? `Data extraction for "${row.file_name ?? "document"}" completed. View Data on the Tenate Page`
+                  : `Data extraction for "${row.file_name ?? "document"}" completed. Data will be sent to Review Page for evaluation.`;
 
                 toast.success(
                   <div
@@ -102,7 +102,7 @@ export function useRealtimeTest(
               // FAILED
               // ========================
               if (row.extraction_status === "FAILED") {
-                const message = `Extraction failed for "${row.file_name ?? "document"}". Click to view errors.`;
+                const message = `Extraction failed for "${row.file_name ?? "document"}". Check Data in the Erro Document List under Document Page`;
 
                 toast.error(
                   <div

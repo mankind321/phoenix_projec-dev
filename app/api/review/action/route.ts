@@ -28,9 +28,9 @@ export async function POST(req: Request) {
     }
 
     // ❌ Only ADMIN can approve/reject
-    if (user.role !== "Admin") {
+    if (user.role !== "Admin" && user.role !== "Manager") {
       return NextResponse.json(
-        { error: "Only admin can approve or reject properties." },
+        { error: "Only admin and manager can approve or reject properties." },
         { status: 403 }
       );
     }
