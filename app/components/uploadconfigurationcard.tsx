@@ -96,7 +96,21 @@ export default function DocumentUploadSection() {
   }, []);
 
   useRealtimeTest(true, {
-    onExtractionFailed: fetchErrorCount,
+    // RENT ROLL → TENANT VIEW READY
+    onTenantReady: () => {
+      fetchDocumentCount();
+      window.dispatchEvent(new Event("document-list-updated"));
+    },
+
+    // OM / SITE PLAN / BROCHURE → REVIEW PAGE
+    onReviewReady: () => {
+      fetchErrorCount();
+    },
+
+    // FAILED → ERROR LIST
+    onExtractionFailed: () => {
+      fetchErrorCount();
+    },
   });
 
   useEffect(() => {

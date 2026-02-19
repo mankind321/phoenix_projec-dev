@@ -73,7 +73,17 @@ export const TopHeaderManager: React.FC = () => {
   }, [fetchReviewCount]);
 
   useRealtimeTest(true, {
-    onExtractionSuccess: fetchReviewCount,
+    // NON-RENT ROLL PASSED → REVIEW QUEUE
+    onReviewReady: fetchReviewCount,
+
+    // FAILED → ERROR QUEUE
+    onExtractionFailed: fetchReviewCount,
+
+    // RENT ROLL PASSED → TENANT VIEW READY
+    onTenantReady: () => {
+      // Notify the component that owns the Document Badge
+      window.dispatchEvent(new Event("document-list-updated"));
+    },
   });
 
   // --------------------------------------------------

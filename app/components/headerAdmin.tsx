@@ -74,7 +74,16 @@ export const TopHeaderAdmin: React.FC = () => {
   }, [fetchReviewCount]);
 
   useRealtimeTest(true, {
-    onExtractionSuccess: fetchReviewCount,
+    // PASSED BUT NOT RENT ROLL → REVIEW QUEUE
+    onReviewReady: fetchReviewCount,
+
+    // FAILED → REVIEW QUEUE
+    onExtractionFailed: fetchReviewCount,
+
+    // RENT ROLL PASSED → TENANT VIEW READY
+    onTenantReady: () => {
+      window.dispatchEvent(new Event("document-list-updated"));
+    },
   });
 
   // --------------------------------------------------

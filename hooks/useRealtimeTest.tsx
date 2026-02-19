@@ -21,7 +21,8 @@ type DocumentRegistryRow = {
 export function useRealtimeTest(
   enabled: boolean,
   options?: {
-    onExtractionSuccess?: () => void;
+    onTenantReady?: () => void;
+    onReviewReady?: () => void;
     onExtractionFailed?: () => void;
   },
 ) {
@@ -64,19 +65,19 @@ export function useRealtimeTest(
 
               const toastId = `doc-${row.user_id}-${row.file_name}-${row.extraction_status}`;
 
-              const normalizedDocType = row.document_type
-                ?.toLowerCase()
-                .replace(/_/g, " ")
-                .trim();
-
-              const isRentRoll = normalizedDocType === "rent roll";
-
               // ========================
               // SUCCESS
               // ========================
               if (row.extraction_status === "PASSED") {
+                const normalizedDocType = (row.document_type ?? "")
+                  .toString()
+                  .toUpperCase()
+                  .replace(/[\s_]/g, "");
+
+                const isRentRoll = normalizedDocType === "RENTROLL";
+
                 const message = isRentRoll
-                  ? `Data extraction for "${row.file_name ?? "document"}" completed. View Data on the Tenate Page`
+                  ? `Data extraction for "${row.file_name ?? "document"}" completed. View Data on the Tenant Page`
                   : `Data extraction for "${row.file_name ?? "document"}" completed. Data will be sent to Review Page for evaluation.`;
 
                 toast.success(
@@ -95,7 +96,12 @@ export function useRealtimeTest(
                   },
                 );
 
-                options?.onExtractionSuccess?.();
+                // 🔽 ROUTE EVENT BASED ON DOCUMENT TYPE
+                if (isRentRoll) {
+                  options?.onTenantReady?.();
+                } else {
+                  options?.onReviewReady?.();
+                }
               }
 
               // ========================
