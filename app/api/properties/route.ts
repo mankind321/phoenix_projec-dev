@@ -223,7 +223,56 @@ async function extractParams(prompt: string) {
 
   const model = genAI.getGenerativeModel({ model: MODEL });
   const instruction = `
-You are an expert real-estate query parser. Extract the user's intent and convert it into structured JSON.
+You are an expert real-estate spatial query parser.
+
+Extract the user's intent and convert it into structured JSON.
+
+IMPORTANT RULES:
+
+1. If the user specifies a radius or distance such as:
+   - within X km
+   - within X miles
+   - near
+   - nearby
+   - around
+
+   Then the mentioned place becomes a GEO-SPATIAL CENTER POINT.
+
+   In this case:
+   - Extract the place into "location"
+   - Convert distance into meters → "radius_m"
+   - DO NOT treat city or state as administrative filters
+   - Set "city" = null
+   - Set "state" = null
+
+2. If the user says:
+   - in Charlotte
+   - located in Texas
+   - properties in Miami
+
+   Then:
+   - Use "city" and/or "state"
+   - Set "location" = null
+   - Set "radius_m" = null
+
+3. Always convert:
+   - miles → meters
+   - kilometers → meters
+
+4. PROPERTY TYPE RULE:
+
+If the user mentions a specific property type
+(e.g. Fast Food, Warehouse, Office, Retail, Industrial),
+extract it EXACTLY as written.
+
+DO NOT generalize.
+DO NOT convert into Commercial/Industrial categories.
+DO NOT infer asset class.
+
+Example:
+
+"Fast food properties" →
+property_type: "Fast Food"
 
 Return ONLY valid JSON:
 
@@ -264,44 +313,6 @@ User text: "${prompt}"
     const parsed = JSON.parse(text);
     console.log("✅ Gemini parsed params:", parsed);
 
-    // -------------------------------------------------
-    // ✅ OPTION A (FINAL):
-    // Allow AI search ONLY if:
-    //  - city exists OR
-    //  - state is a valid 2-letter US code (e.g. TX, CA)
-    //
-    // This rejects:
-    //  - countries (Philippines)
-    //  - regions (Asia)
-    //  - full state names (Texas)
-    // -------------------------------------------------
-    // Normalize state FIRST
-    const normalizedState = await normalizeState(parsed.state ?? null);
-
-    // Update parsed.state with normalized version
-    parsed.state = normalizedState;
-
-    // Validate AFTER normalization
-    const isValidState = normalizedState !== null;
-
-    if (!parsed.city && !isValidState) {
-      console.warn("⚠️ AI query too broad — invalid or unsupported state", {
-        prompt,
-        parsed,
-        normalizedState,
-      });
-
-      return {
-        location: null,
-        radius_m: null,
-        property_type: parsed.property_type ?? null,
-        min_price: parsed.min_price ?? null,
-        max_price: parsed.max_price ?? null,
-        city: null,
-        state: null,
-      };
-    }
-
     return parsed;
   } catch (e) {
     console.error("❌ Gemini JSON parse failed:", text);
@@ -320,6 +331,16 @@ User text: "${prompt}"
 // -------------------------------------------------
 // STATE NORMALIZATION
 // -------------------------------------------------
+function sanitizeLocation(raw: string | null): string | null {
+  if (!raw) return null;
+
+  return raw
+    .toLowerCase()
+    .replace(/\b(outside|near|around|within|close to|next to)\b/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 async function normalizeState(raw: string | null) {
   if (!raw) return null;
 
@@ -455,11 +476,30 @@ export async function GET(req: Request) {
 
       const params = await extractParams(queryText!);
 
-      if (!params.city && !params.state) {
-        console.warn("⛔ AI search aborted — rejected by Option A", {
-          queryText,
-          params,
-        });
+      // ----------------------------------------------
+      // Strip spatial modifiers from location
+      // Example: "outside Charlotte, NC" → "Charlotte, NC"
+      // ----------------------------------------------
+      params.location = sanitizeLocation(params.location);
+
+      // ----------------------------------------------
+      // Radius detection
+      // ----------------------------------------------
+      const isRadiusSearch = params.radius_m !== null;
+
+      // ----------------------------------------------
+      // Normalize admin state ONLY if admin search
+      // ----------------------------------------------
+      if (!isRadiusSearch && params.state) {
+        params.state = await normalizeState(params.state);
+      }
+
+      // ----------------------------------------------
+      // VALIDATION RULE
+      // Only apply for NON-radius searches
+      // ----------------------------------------------
+      if (!isRadiusSearch && !params.city && !params.state) {
+        console.warn("⛔ AI search aborted — no valid admin location");
 
         return NextResponse.json({
           success: true,
@@ -474,10 +514,11 @@ export async function GET(req: Request) {
         params.state = await normalizeState(params.state);
       }
 
-      const loc =
-        (params.city && params.state
-          ? `${params.city}, ${params.state}`
-          : params.city || params.location || params.state) || null;
+      const loc = isRadiusSearch
+        ? params.location
+        : (params.city && params.state
+            ? `${params.city}, ${params.state}`
+            : params.city || params.state) || null;
 
       let geo: { lat: number; lng: number } | null = null;
 
