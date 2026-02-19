@@ -9,7 +9,7 @@ import { logAuditTrail } from "@/lib/auditLogger";
 // ⚠️ ADMIN-ONLY SYSTEM OPERATIONS — MUST USE SERVICE ROLE KEY
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
 );
 
 // ============================================================
@@ -19,7 +19,10 @@ export async function GET(req: Request) {
   const session = await getServerSession(authOptions);
 
   if (!session?.user || session.user.role !== "Admin") {
-    return NextResponse.json({ error: "Forbidden: Admins only" }, { status: 403 });
+    return NextResponse.json(
+      { error: "Forbidden: Admins only" },
+      { status: 403 },
+    );
   }
 
   try {
@@ -30,19 +33,54 @@ export async function GET(req: Request) {
     const offset = (page - 1) * pageSize;
     const search = searchParams.get("search")?.trim() || "";
 
-    let query = supabase
+    // ============================================================
+    // 🔍 SEARCH MODE — Use RPC (supports First Middle Last)
+    // ============================================================
+    if (search) {
+      const { data: users, error: searchError } = await supabase
+        .rpc("search_users", { p_search: search })
+        .order("userid", { ascending: true })
+        .range(offset, offset + pageSize - 1);
+
+      if (searchError) throw searchError;
+
+      const { data: countResult, error: countError } = await supabase
+        .rpc("search_users_count", { p_search: search })
+        .single();
+
+      if (countError) throw countError;
+
+      const total = Number(countResult) || 0;
+
+      await logAuditTrail({
+        userId: session.user.id,
+        username: session.user.username,
+        role: session.user.role,
+        actionType: "VIEW",
+        tableName: "usersacc",
+        description: `Searched users: "${search}"`,
+        ipAddress: req.headers.get("x-forwarded-for") ?? "N/A",
+        userAgent: req.headers.get("user-agent") ?? "Unknown",
+      });
+
+      return NextResponse.json({
+        success: true,
+        data: users ?? [],
+        total,
+        page,
+        pageSize,
+      });
+    }
+
+    // ============================================================
+    // 📄 DEFAULT MODE — No Search
+    // ============================================================
+    const { data, error, count } = await supabase
       .from("useraccountaccesslist")
       .select("*", { count: "exact" })
       .order("userid", { ascending: true })
       .range(offset, offset + pageSize - 1);
 
-    if (search) {
-      query = query.or(
-        `first_name.ilike.%${search}%,last_name.ilike.%${search}%,email.ilike.%${search}%,username.ilike.%${search}%`
-      );
-    }
-
-    const { data, error, count } = await query;
     if (error) throw error;
 
     await logAuditTrail({
@@ -66,7 +104,7 @@ export async function GET(req: Request) {
   } catch (err: any) {
     return NextResponse.json(
       { success: false, message: err.message },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -80,7 +118,7 @@ export async function POST(req: Request) {
   if (!session?.user || session.user.role !== "Admin") {
     return NextResponse.json(
       { success: false, message: "Forbidden: Admins only" },
-      { status: 403 }
+      { status: 403 },
     );
   }
 
@@ -90,7 +128,7 @@ export async function POST(req: Request) {
     if (!formData || !accountData) {
       return NextResponse.json(
         { success: false, message: "Invalid payload" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -115,7 +153,7 @@ export async function POST(req: Request) {
           profile_image_url: formData.profileImageUrl ?? null,
           createdby: session.user.username,
           updatedby: session.user.username,
-        }
+        },
       ])
       .select("userid")
       .single();
@@ -140,7 +178,7 @@ export async function POST(req: Request) {
           password_hash: hashedPassword,
           role: accountData.role,
           manager_id: accountData.managerId || null,
-        }
+        },
       ])
       .select("accountid")
       .single();
@@ -158,7 +196,7 @@ export async function POST(req: Request) {
           accountid: accountInserted.accountid,
           username: accountData.username,
           role: accountData.role,
-        }
+        },
       });
 
     if (authError) throw authError;
@@ -169,7 +207,7 @@ export async function POST(req: Request) {
     await supabase
       .from("accounts")
       .update({
-        supabase_auth_user_id: authUser.user.id
+        supabase_auth_user_id: authUser.user.id,
       })
       .eq("accountid", accountInserted.accountid);
 
@@ -185,7 +223,7 @@ export async function POST(req: Request) {
       recordId: userid,
       description: `Created new ${accountData.role} (${accountData.username})`,
       ipAddress: req.headers.get("x-forwarded-for") ?? "N/A",
-      userAgent: req.headers.get("user-agent") ?? "Unknown"
+      userAgent: req.headers.get("user-agent") ?? "Unknown",
     });
 
     return NextResponse.json({
@@ -193,12 +231,11 @@ export async function POST(req: Request) {
       message: "User created successfully",
       userid,
     });
-
   } catch (err: any) {
     console.error("❌ POST /api/users:", err);
     return NextResponse.json(
       { success: false, message: err.message },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
