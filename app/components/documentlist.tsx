@@ -29,6 +29,16 @@ import {
   flexRender,
   ColumnDef,
 } from "@tanstack/react-table";
+
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+
 import { Can } from "./can";
 
 import { useSession } from "next-auth/react";
@@ -63,6 +73,11 @@ export default function DocumentListTab() {
   const [searchInput, setSearchInput] = useState("");
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const [showRecentDropdown, setShowRecentDropdown] = useState(false);
+
+  const [rowSelection, setRowSelection] = useState({});
+
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const searchWrapperRef = useRef<HTMLDivElement>(null);
 
@@ -173,7 +188,7 @@ export default function DocumentListTab() {
     return url.replace(`gs://${process.env.NEXT_PUBLIC_GCP_BUCKET}/`, "");
   }
 
-  const handleDelete = useCallback(
+  /**const handleDelete = useCallback(
     async (documentId: string) => {
       if (!confirm("Are you sure you want to delete this document?")) return;
 
@@ -198,7 +213,49 @@ export default function DocumentListTab() {
       }
     },
     [loadDocuments],
-  );
+  );**/
+
+  const handleBulkDelete = useCallback(async () => {
+    const selectedIds = Object.keys(rowSelection)
+      .map((rowIndex) => documents[Number(rowIndex)]?.document_id)
+      .filter(Boolean);
+
+    if (!selectedIds.length) {
+      toast.error("Please select at least one document.");
+      return;
+    }
+
+    try {
+      setDeleting(true);
+
+      const loadingToast = toast.loading(
+        `Deleting ${selectedIds.length} document(s)...`,
+      );
+
+      const res = await fetch("/api/document", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: selectedIds }),
+      });
+
+      const data = await res.json();
+
+      if (!data.success) throw new Error(data.message);
+
+      toast.success(`${selectedIds.length} document(s) deleted`, {
+        id: loadingToast,
+      });
+
+      setRowSelection({});
+      setConfirmOpen(false);
+      loadDocuments();
+      window.dispatchEvent(new Event("document-list-updated"));
+    } catch (err: any) {
+      toast.error(err.message || "Bulk delete failed");
+    } finally {
+      setDeleting(false);
+    }
+  }, [rowSelection, documents, loadDocuments]);
 
   const handleDownload = useCallback(
     async (documentId: string, url: string) => {
@@ -249,13 +306,49 @@ export default function DocumentListTab() {
   const columns: ColumnDef<any>[] = useMemo(
     () => [
       {
+        id: "select",
+        header: ({ table }) => (
+          <Can role={["Admin", "Manager"]}>
+            <div className="flex items-center justify-center">
+              <input
+                type="checkbox"
+                className="cursor-pointer"
+                checked={table.getIsAllPageRowsSelected()}
+                onChange={table.getToggleAllPageRowsSelectedHandler()}
+              />
+            </div>
+          </Can>
+        ),
+        cell: ({ row }) => (
+          <Can role={["Admin", "Manager"]}>
+            <div className="flex items-center justify-center">
+              <input
+                type="checkbox"
+                className="cursor-pointer"
+                checked={row.getIsSelected()}
+                disabled={!row.getCanSelect()}
+                onChange={row.getToggleSelectedHandler()}
+              />
+            </div>
+          </Can>
+        ),
+        size: 40,
+        meta: {
+          className: "px-2", // 👈 reduce horizontal padding
+        },
+      },
+      {
         id: "icon",
         header: "",
         cell: () => (
-          <div className="text-center">
-            <FileText className="w-5 h-5 text-gray-500 mx-auto" />
+          <div className="flex items-center justify-center">
+            <FileText className="w-5 h-5 text-gray-500" />
           </div>
         ),
+        size: 40,
+        meta: {
+          className: "px-2",
+        },
       },
       {
         accessorKey: "file_url",
@@ -270,7 +363,6 @@ export default function DocumentListTab() {
           );
         },
       },
-
       {
         accessorKey: "user_name",
         header: "Uploaded By",
@@ -320,7 +412,8 @@ export default function DocumentListTab() {
         header: "Action",
         cell: ({ row }) => (
           <div className="flex gap-2">
-            {/* Download */}
+            {" "}
+            {/* Download */}{" "}
             <Button
               size="sm"
               disabled={downloadingId === row.original.document_id}
@@ -329,33 +422,27 @@ export default function DocumentListTab() {
               }
               className="flex items-center gap-1 bg-blue-700 hover:bg-blue-400 text-white disabled:bg-gray-400"
             >
-              <Download className="w-4 h-4" />
+              {" "}
+              <Download className="w-4 h-4" />{" "}
               {downloadingId === row.original.document_id
                 ? "Checking..."
-                : "Download"}
-            </Button>
-
-            {/* Delete */}
-            <Can role={["Admin", "Manager"]}>
-              <Button
-                size="sm"
-                onClick={() => handleDelete(row.original.document_id)}
-                className="flex items-center gap-1 bg-red-700 hover:bg-red-500 text-white"
-              >
-                <Trash2 className="w-4 h-4" />
-                Delete
-              </Button>
-            </Can>
+                : "Download"}{" "}
+            </Button>{" "}
           </div>
         ),
       },
     ],
-    [downloadingId, handleDelete, handleDownload],
+    [downloadingId, handleDownload],
   );
 
   const table = useReactTable({
     data: documents,
     columns,
+    state: {
+      rowSelection,
+    },
+    onRowSelectionChange: setRowSelection,
+    enableRowSelection: true,
     getCoreRowModel: getCoreRowModel(),
   });
 
@@ -372,7 +459,7 @@ export default function DocumentListTab() {
         >
           <div className="relative">
             <Input
-              placeholder="Search By Document Name, Uploaded By, Document Type or Property/Tenant"
+              placeholder="Search by Document Name, Uploader, Type, or Property/Tenant."
               value={searchInput}
               onChange={(e) => {
                 const value = e.target.value;
@@ -390,7 +477,7 @@ export default function DocumentListTab() {
               onKeyDown={(e) => {
                 if (e.key === "Enter") applySearch();
               }}
-              className="w-[600px]"
+              className="w-[500px]"
             />
 
             {/* Recent search dropdown */}
@@ -441,7 +528,7 @@ export default function DocumentListTab() {
           </Button>
         </div>
 
-        <div className="flex gap-3">
+        <div className="flex gap-3 mt-2">
           <Input
             type="date"
             value={draftDateFrom}
@@ -476,6 +563,23 @@ export default function DocumentListTab() {
           >
             Clear
           </Button>
+
+          <Can role={["Admin", "Manager"]}>
+            <Button
+              onClick={() => {
+                if (!Object.keys(rowSelection).length) {
+                  toast.error("Please select at least one document.");
+                  return;
+                }
+                setConfirmOpen(true);
+              }}
+              disabled={deleting}
+              className="mb-3 bg-red-700 hover:bg-red-500 text-white mt-2"
+            >
+              <Trash2 className="w-4 h-4 mr-2" />
+              Delete Selected ({table.getSelectedRowModel().rows.length})
+            </Button>
+          </Can>
         </div>
       </div>
 
@@ -486,7 +590,10 @@ export default function DocumentListTab() {
             {table.getHeaderGroups().map((group) => (
               <TableRow key={group.id}>
                 {group.headers.map((header) => (
-                  <TableHead key={header.id}>
+                  <TableHead
+                    key={header.id}
+                    className={header.column.columnDef.meta?.className}
+                  >
                     {flexRender(
                       header.column.columnDef.header,
                       header.getContext(),
@@ -511,7 +618,10 @@ export default function DocumentListTab() {
               table.getRowModel().rows.map((row) => (
                 <TableRow key={row.id}>
                   {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id}>
+                    <TableCell
+                      key={cell.id}
+                      className={cell.column.columnDef.meta?.className}
+                    >
                       {flexRender(
                         cell.column.columnDef.cell,
                         cell.getContext(),
@@ -558,6 +668,35 @@ export default function DocumentListTab() {
           </Button>
         </div>
       </div>
+      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Selected Documents?</DialogTitle>
+            <DialogDescription>
+              This action cannot be undone. The selected documents will be
+              permanently removed.
+            </DialogDescription>
+          </DialogHeader>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setConfirmOpen(false)}
+              disabled={deleting}
+            >
+              Cancel
+            </Button>
+
+            <Button
+              className="bg-red-700 hover:bg-red-500 text-white"
+              onClick={handleBulkDelete}
+              disabled={deleting}
+            >
+              {deleting ? "Deleting..." : "Confirm Delete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

@@ -72,67 +72,6 @@ interface User {
 }
 
 // ========================
-// DELETE MODAL
-// ========================
-function DeleteUserModal({ open, onClose, user, onDeleted }: any) {
-  const [isDeleting, setIsDeleting] = React.useState(false);
-  if (!user) return null;
-
-  const handleConfirmDelete = async () => {
-    setIsDeleting(true);
-    try {
-      const res = await fetch(`/api/users/${user.userid}`, {
-        method: "DELETE",
-      });
-      const data = await res.json();
-
-      if (data.success) {
-        toast.success(`User ${user.first_name} deleted.`);
-        onDeleted();
-        onClose();
-      } else {
-        toast.error(data.message || "Failed to delete user.");
-      }
-    } catch (err) {
-      toast.error("Unexpected error.");
-    } finally {
-      setIsDeleting(false);
-    }
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Confirm Delete</DialogTitle>
-          <DialogDescription>
-            Delete{" "}
-            <b>
-              {user.first_name} {user.last_name}
-            </b>
-            ? This cannot be undone.
-          </DialogDescription>
-        </DialogHeader>
-
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={isDeleting}>
-            Cancel
-          </Button>
-
-          <Button
-            variant="destructive"
-            onClick={handleConfirmDelete}
-            disabled={isDeleting}
-          >
-            {isDeleting ? "Deleting…" : "Confirm"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-// ========================
 // MAIN TABLE
 // ========================
 export default function UserTable() {
@@ -150,8 +89,7 @@ export default function UserTable() {
   const [totalPages, setTotalPages] = React.useState(1);
 
   const [isLoading, setIsLoading] = React.useState(true);
-  const [deleteOpen, setDeleteOpen] = React.useState(false);
-  const [selectedUser, setSelectedUser] = React.useState<User | null>(null);
+
   const [loggingOutUserId, setLoggingOutUserId] = React.useState<number | null>(
     null,
   );
@@ -162,6 +100,13 @@ export default function UserTable() {
   const [searchInput, setSearchInput] = React.useState("");
   const [recentSearches, setRecentSearches] = React.useState<string[]>([]);
   const [showRecentDropdown, setShowRecentDropdown] = React.useState(false);
+
+  const [rowSelection, setRowSelection] = React.useState({});
+  const [bulkDeleteOpen, setBulkDeleteOpen] = React.useState(false);
+  const [bulkLogoutOpen, setBulkLogoutOpen] = React.useState(false);
+
+  const [bulkDeleting, setBulkDeleting] = React.useState(false);
+  const [bulkLoggingOut, setBulkLoggingOut] = React.useState(false);
 
   const searchWrapperRef = useRef<HTMLDivElement>(null);
 
@@ -275,6 +220,91 @@ export default function UserTable() {
     }
   };
 
+  const handleBulkDelete = async () => {
+    const selectedIds = table
+      .getSelectedRowModel()
+      .rows.map((row) => row.original.userid)
+      .filter(Boolean);
+
+    if (!selectedIds.length) {
+      toast.error("Please select at least one user.");
+      return;
+    }
+
+    try {
+      setBulkDeleting(true);
+
+      const loadingToast = toast.loading(
+        `Deleting ${selectedIds.length} user(s)...`,
+      );
+
+      const res = await fetch("/api/users", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: selectedIds }),
+      });
+
+      const json = await res.json();
+
+      if (!json.success) throw new Error(json.message);
+
+      toast.success(`${selectedIds.length} user(s) deleted`, {
+        id: loadingToast,
+      });
+
+      setRowSelection({});
+      setBulkDeleteOpen(false);
+      loadUsers();
+    } catch (err: any) {
+      toast.error(err.message || "Bulk delete failed");
+    } finally {
+      setBulkDeleting(false);
+    }
+  };
+
+  const handleBulkForceLogout = async () => {
+    const selectedAccounts = table
+      .getSelectedRowModel()
+      .rows.map((row) => row.original.accountid)
+      .filter(Boolean);
+
+    if (!selectedAccounts.length) {
+      toast.error("Please select at least one user.");
+      return;
+    }
+
+    try {
+      setBulkLoggingOut(true);
+
+      const loadingToast = toast.loading(
+        `Logging out ${selectedAccounts.length} user(s)...`,
+      );
+
+      const res = await fetch("/api/users/force-logout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          accountIds: selectedAccounts,
+        }),
+      });
+
+      const json = await res.json();
+
+      if (!json.success) throw new Error(json.message);
+
+      toast.success(`${selectedAccounts.length} user(s) logged out`, {
+        id: loadingToast,
+      });
+
+      setRowSelection({});
+      setBulkLogoutOpen(false);
+    } catch (err: any) {
+      toast.error(err.message || "Bulk logout failed");
+    } finally {
+      setBulkLoggingOut(false);
+    }
+  };
+
   React.useEffect(() => {
     loadUsers();
   }, [loadUsers]);
@@ -284,6 +314,33 @@ export default function UserTable() {
   // ========================
   const columns = React.useMemo<ColumnDef<User>[]>(
     () => [
+      {
+        id: "select",
+        header: ({ table }) => (
+          <div className="flex justify-center">
+            <input
+              type="checkbox"
+              checked={table.getIsAllPageRowsSelected()}
+              onChange={table.getToggleAllPageRowsSelectedHandler()}
+            />
+          </div>
+        ),
+        cell: ({ row }) => (
+          <div className="flex justify-center">
+            <input
+              type="checkbox"
+              checked={row.getIsSelected()}
+              disabled={!row.getCanSelect()}
+              onChange={row.getToggleSelectedHandler()}
+            />
+          </div>
+        ),
+        size: 40,
+        meta: {
+          className: "px-2",
+          headerClassName: "px-2",
+        },
+      },
       {
         id: "icon",
         header: "",
@@ -329,36 +386,14 @@ export default function UserTable() {
                   router.push(`/dashboard/users/edit?id=${user.userid}`)
                 }
               >
-                <Edit size={15} />
-              </Button>
-
-              <Button
-                className="bg-blue-700 hover:bg-blue-500 text-white hover:text-white"
-                size="sm"
-                variant="secondary"
-                disabled={loggingOutUserId === user.userid}
-                onClick={() => handleForceLogout(user)}
-                title="Force Logout"
-              >
-                <LogOut size={15} />
-              </Button>
-
-              <Button
-                size="sm"
-                variant="destructive"
-                onClick={() => {
-                  setSelectedUser(user);
-                  setDeleteOpen(true);
-                }}
-              >
-                <Trash2 size={15} />
+                <Edit size={15} /> Update
               </Button>
             </div>
           );
         },
       },
     ],
-    [loggingOutUserId, router],
+    [router],
   );
 
   // ========================
@@ -367,8 +402,13 @@ export default function UserTable() {
   const table = useReactTable({
     data: users,
     columns,
-    state: { sorting },
+    state: {
+      sorting,
+      rowSelection,
+    },
     onSortingChange: setSorting,
+    onRowSelectionChange: setRowSelection,
+    enableRowSelection: true,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
   });
@@ -484,6 +524,36 @@ export default function UserTable() {
             <Plus size={18} />
             Add User
           </Button>
+
+          <Button
+            variant="secondary"
+            disabled={bulkLoggingOut}
+            onClick={() => {
+              if (!table.getSelectedRowModel().rows.length) {
+                toast.error("Please select at least one user.");
+                return;
+              }
+              setBulkLogoutOpen(true);
+            }}
+          >
+            <LogOut size={15} />
+            Bulk Logout ({table.getSelectedRowModel().rows.length})
+          </Button>
+
+          <Button
+            variant="destructive"
+            disabled={bulkDeleting}
+            onClick={() => {
+              if (!Object.keys(rowSelection).length) {
+                toast.error("Please select at least one user.");
+                return;
+              }
+              setBulkDeleteOpen(true);
+            }}
+          >
+            <Trash2 size={15} />
+            Delete Selected ({table.getSelectedRowModel().rows.length})
+          </Button>
         </div>
       </div>
 
@@ -579,13 +649,45 @@ export default function UserTable() {
         </div>
       </div>
 
-      {/* DELETE MODAL */}
-      <DeleteUserModal
-        open={deleteOpen}
-        onClose={() => setDeleteOpen(false)}
-        user={selectedUser}
-        onDeleted={loadUsers}
-      />
+      <Dialog open={bulkDeleteOpen} onOpenChange={setBulkDeleteOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Selected Users?</DialogTitle>
+            <DialogDescription>This action cannot be undone.</DialogDescription>
+          </DialogHeader>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBulkDeleteOpen(false)}>
+              Cancel
+            </Button>
+
+            <Button variant="destructive" onClick={handleBulkDelete}>
+              {bulkDeleting ? "Deleting..." : "Confirm Delete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={bulkLogoutOpen} onOpenChange={setBulkLogoutOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Force Logout Selected Users?</DialogTitle>
+            <DialogDescription>
+              Selected users will be logged out immediately.
+            </DialogDescription>
+          </DialogHeader>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBulkLogoutOpen(false)}>
+              Cancel
+            </Button>
+
+            <Button onClick={handleBulkForceLogout}>
+              {bulkLoggingOut ? "Logging out..." : "Confirm Logout"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

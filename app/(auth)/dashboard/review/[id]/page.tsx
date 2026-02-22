@@ -337,11 +337,11 @@ export default function PropertyViewPage({
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Relationship</TableHead>
-                <TableHead>Listing Company</TableHead>
                 <TableHead>Broker</TableHead>
                 <TableHead>Phone</TableHead>
                 <TableHead>Email</TableHead>
+                <TableHead>Relationship</TableHead>
+                <TableHead>Listing Company</TableHead>
                 <TableHead>Website</TableHead>
                 <TableHead>Comments</TableHead>
               </TableRow>
@@ -350,11 +350,11 @@ export default function PropertyViewPage({
             <TableBody>
               {contacts.map((c: any) => (
                 <TableRow key={c.contact_assignment_id}>
-                  <TableCell>{c.relationship || "—"}</TableCell>
-                  <TableCell>{c.listing_company || "—"}</TableCell>
                   <TableCell>{c.broker_name || "—"}</TableCell>
                   <TableCell>{c.phone || "—"}</TableCell>
                   <TableCell>{c.email || "—"}</TableCell>
+                  <TableCell>{c.relationship || "—"}</TableCell>
+                  <TableCell>{c.listing_company || "—"}</TableCell>
                   <TableCell>{c.website || "—"}</TableCell>
                   <TableCell>{c.comments || "—"}</TableCell>
                 </TableRow>
@@ -410,7 +410,7 @@ export default function PropertyViewPage({
       <Dialog open={approveOpen} onOpenChange={setApproveOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Approve Property</DialogTitle>
+            <DialogTitle>Approve Property?</DialogTitle>
             <DialogDescription>
               Are you sure you want to approve this property?
             </DialogDescription>
@@ -443,10 +443,10 @@ export default function PropertyViewPage({
       <Dialog open={rejectOpen} onOpenChange={setRejectOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Reject Property</DialogTitle>
+            <DialogTitle>Reject Property?</DialogTitle>
             <DialogDescription>
-              This will permanently delete the property. This action cannot be
-              undone.
+              This will permanently delete the property information. This action
+              cannot be undone.
             </DialogDescription>
           </DialogHeader>
 

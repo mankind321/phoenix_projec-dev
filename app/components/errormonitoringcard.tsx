@@ -60,76 +60,6 @@ export interface ErrorMonitoringRecord {
   created_at: string;
 }
 
-/* ------------------ DELETE MODAL ---------------------- */
-
-function DeleteErrorMonitoringModal({
-  open,
-  onClose,
-  record,
-  onDeleted,
-}: {
-  open: boolean;
-  onClose: () => void;
-  record: ErrorMonitoringRecord | null;
-  onDeleted: () => void;
-}) {
-  const [isDeleting, setIsDeleting] = React.useState(false);
-
-  if (!record) return null;
-
-  const handleDelete = async () => {
-    setIsDeleting(true);
-
-    try {
-      const res = await fetch(`/api/errormonitoring/${record.file_id}`, {
-        method: "DELETE",
-      });
-
-      const json = await res.json();
-
-      if (!res.ok || !json.success)
-        throw new Error(json.error || "Delete failed");
-
-      toast.success(`"${record.file_name}" deleted successfully.`);
-
-      onDeleted();
-      onClose();
-    } catch (err: any) {
-      toast.error(err.message);
-    } finally {
-      setIsDeleting(false);
-    }
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Delete Record</DialogTitle>
-
-          <DialogDescription>
-            Delete <b>{record.file_name}</b>? This action cannot be undone.
-          </DialogDescription>
-        </DialogHeader>
-
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
-            Cancel
-          </Button>
-
-          <Button
-            variant="destructive"
-            onClick={handleDelete}
-            disabled={isDeleting}
-          >
-            {isDeleting ? "Deleting…" : "Confirm Delete"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
 /* ------------------ FORMAT DATE ---------------------- */
 
 function formatDateTime(value: string) {
@@ -162,11 +92,6 @@ export default function ErrorMonitoringTable({
 
   const [search, setSearch] = React.useState("");
 
-  const [deleteOpen, setDeleteOpen] = React.useState(false);
-  const [selected, setSelected] = React.useState<ErrorMonitoringRecord | null>(
-    null,
-  );
-
   const { data: session } = useSession();
   const userId = session?.user?.id;
 
@@ -175,6 +100,10 @@ export default function ErrorMonitoringTable({
   const [searchInput, setSearchInput] = React.useState("");
   const [recentSearches, setRecentSearches] = React.useState<string[]>([]);
   const [showRecentDropdown, setShowRecentDropdown] = React.useState(false);
+
+  const [rowSelection, setRowSelection] = React.useState({});
+  const [bulkDeleteOpen, setBulkDeleteOpen] = React.useState(false);
+  const [bulkDeleting, setBulkDeleting] = React.useState(false);
 
   const searchWrapperRef = React.useRef<HTMLDivElement>(null);
 
@@ -201,6 +130,48 @@ export default function ErrorMonitoringTable({
 
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  const handleBulkDelete = async () => {
+    const selectedIds = Object.keys(rowSelection)
+      .map((rowIndex) => data[Number(rowIndex)]?.file_id)
+      .filter(Boolean);
+
+    if (!selectedIds.length) {
+      toast.error("Please select at least one record.");
+      return;
+    }
+
+    try {
+      setBulkDeleting(true);
+
+      const loadingToast = toast.loading(
+        `Deleting ${selectedIds.length} record(s)...`,
+      );
+
+      const res = await fetch("/api/errormonitoring", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: selectedIds }),
+      });
+
+      const json = await res.json();
+
+      if (!json.success) throw new Error(json.message);
+
+      toast.success(`${selectedIds.length} record(s) deleted`, {
+        id: loadingToast,
+      });
+
+      setRowSelection({});
+      setBulkDeleteOpen(false);
+      loadRecords();
+      onDeleteSuccess?.();
+    } catch (err: any) {
+      toast.error(err.message || "Bulk delete failed");
+    } finally {
+      setBulkDeleting(false);
+    }
+  };
 
   const saveRecentSearch = (value: string) => {
     if (!value || !userId) return;
@@ -264,14 +235,48 @@ export default function ErrorMonitoringTable({
   const columns = React.useMemo<ColumnDef<ErrorMonitoringRecord>[]>(
     () => [
       {
+        id: "select",
+        header: ({ table }) => (
+          <div className="flex items-center justify-center">
+            <input
+              type="checkbox"
+              className="cursor-pointer"
+              checked={table.getIsAllPageRowsSelected()}
+              onChange={table.getToggleAllPageRowsSelectedHandler()}
+            />
+          </div>
+        ),
+        cell: ({ row }) => (
+          <div className="flex items-center justify-center">
+            <input
+              type="checkbox"
+              className="cursor-pointer"
+              checked={row.getIsSelected()}
+              disabled={!row.getCanSelect()}
+              onChange={row.getToggleSelectedHandler()}
+            />
+          </div>
+        ),
+        size: 40,
+        meta: {
+          className: "px-2",
+          headerClassName: "px-2",
+        },
+      },
+      {
         id: "icon",
         header: "",
         enableSorting: false,
         cell: () => (
-          <div className="flex justify-center">
-            <FileWarning className="w-5 h-5 text-gray-500" />
+          <div className="flex items-center justify-center">
+            <FileWarning className="w-4 h-4 text-gray-500" />
           </div>
         ),
+        size: 40,
+        meta: {
+          className: "px-2",
+          headerClassName: "px-2",
+        },
       },
 
       {
@@ -327,7 +332,7 @@ export default function ErrorMonitoringTable({
 
       {
         id: "action",
-        header: () => <div className="text-right">Action</div>,
+        header: () => <div className="text-center">Action</div>,
         cell: ({ row }) => (
           <div className="flex justify-end gap-2">
             {/* VIEW BUTTON */}
@@ -343,19 +348,6 @@ export default function ErrorMonitoringTable({
             >
               <Eye size={16} /> View
             </Button>
-
-            {/* DELETE BUTTON */}
-
-            <Button
-              size="sm"
-              variant="destructive"
-              onClick={() => {
-                setSelected(row.original);
-                setDeleteOpen(true);
-              }}
-            >
-              <Trash2 size={16} /> Delete
-            </Button>
           </div>
         ),
       },
@@ -366,15 +358,16 @@ export default function ErrorMonitoringTable({
   const table = useReactTable({
     data,
     columns,
-
-    state: { sorting },
-
+    state: {
+      sorting,
+      rowSelection,
+    },
     onSortingChange: setSorting,
-
+    onRowSelectionChange: setRowSelection,
+    enableRowSelection: true,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
   });
-
   /* ------------------ UI ---------------------- */
 
   return (
@@ -452,6 +445,24 @@ export default function ErrorMonitoringTable({
           <Search className="w-4 h-4" />
           Search
         </Button>
+
+        <Button
+          variant="destructive"
+          className="mt-2"
+          disabled={bulkDeleting}
+          onClick={() => {
+            if (!Object.keys(rowSelection).length) {
+              toast.error("Please select at least one document.");
+              return;
+            }
+            setBulkDeleteOpen(true);
+          }}
+        >
+          <Trash2 className="w-4 h-4 mr-2" />
+          {bulkDeleting
+            ? "Deleting..."
+            : `Delete Selected (${table.getSelectedRowModel().rows.length})`}
+        </Button>
       </div>
 
       {/* TABLE */}
@@ -462,7 +473,10 @@ export default function ErrorMonitoringTable({
             {table.getHeaderGroups().map((hg) => (
               <TableRow key={hg.id}>
                 {hg.headers.map((h) => (
-                  <TableHead key={h.id}>
+                  <TableHead
+                    key={h.id}
+                    className={h.column.columnDef.meta?.headerClassName}
+                  >
                     {flexRender(h.column.columnDef.header, h.getContext())}
                   </TableHead>
                 ))}
@@ -484,7 +498,10 @@ export default function ErrorMonitoringTable({
               table.getRowModel().rows.map((row) => (
                 <TableRow key={row.id}>
                   {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id}>
+                    <TableCell
+                      key={cell.id}
+                      className={cell.column.columnDef.meta?.className}
+                    >
                       {flexRender(
                         cell.column.columnDef.cell,
                         cell.getContext(),
@@ -534,15 +551,35 @@ export default function ErrorMonitoringTable({
           </Button>
         </div>
       </div>
-      <DeleteErrorMonitoringModal
-        open={deleteOpen}
-        onClose={() => setDeleteOpen(false)}
-        record={selected}
-        onDeleted={() => {
-          loadRecords(); // refresh table
-          onDeleteSuccess?.(); // refresh badge count in parent
-        }}
-      />
+      <Dialog open={bulkDeleteOpen} onOpenChange={setBulkDeleteOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Selected Documents?</DialogTitle>
+            <DialogDescription>
+              This action cannot be undone. The selected document will be
+              permanently removed.
+            </DialogDescription>
+          </DialogHeader>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setBulkDeleteOpen(false)}
+              disabled={bulkDeleting}
+            >
+              Cancel
+            </Button>
+
+            <Button
+              variant="destructive"
+              onClick={handleBulkDelete}
+              disabled={bulkDeleting}
+            >
+              {bulkDeleting ? "Deleting..." : "Confirm Delete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

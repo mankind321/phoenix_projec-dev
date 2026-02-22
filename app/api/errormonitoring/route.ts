@@ -108,3 +108,110 @@ export async function GET(req: Request) {
     );
   }
 }
+
+export async function DELETE(req: Request) {
+  try {
+    // 1️⃣ Validate session
+    const session = await getServerSession(authOptions);
+    const user = session?.user;
+
+    if (!user) {
+      return NextResponse.json(
+        { success: false, message: "Unauthorized" },
+        { status: 401 },
+      );
+    }
+
+    // 2️⃣ RLS headers
+    const rlsHeaders = {
+      "x-app-role": user.role,
+      "x-user-id": user.id,
+      "x-account-id": user.accountId ?? "",
+    };
+
+    const supabase = createRlsClient(rlsHeaders);
+
+    // ------------------------------------------
+    // Detect Bulk Mode
+    // ------------------------------------------
+    const body = await req.json().catch(() => null);
+    const ids: string[] = body?.ids ?? [];
+
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return NextResponse.json(
+        { success: false, message: "No record IDs provided" },
+        { status: 400 },
+      );
+    }
+
+    // ------------------------------------------
+    // Fetch first (Audit + Ownership Check)
+    // ------------------------------------------
+    const { data: records, error: fetchError } = await supabase
+      .from("document_registry")
+      .select("file_id,file_name")
+      .eq("user_id", user.id) // 🔐 ownership
+      .in("file_id", ids);
+
+    if (fetchError || !records?.length) {
+      return NextResponse.json(
+        { success: false, message: "Record(s) not found" },
+        { status: 404 },
+      );
+    }
+
+    // ------------------------------------------
+    // Perform Bulk Delete
+    // ------------------------------------------
+    const { error: deleteError } = await supabase
+      .from("document_registry")
+      .delete()
+      .eq("user_id", user.id) // 🔐 enforce ownership again
+      .in(
+        "file_id",
+        records.map((r) => r.file_id),
+      );
+
+    if (deleteError) {
+      console.error(deleteError);
+      return NextResponse.json(
+        { success: false, message: deleteError.message },
+        { status: 500 },
+      );
+    }
+
+    // ------------------------------------------
+    // Parallel Audit Trail
+    // ------------------------------------------
+    await Promise.all(
+      records.map((rec) =>
+        logAuditTrail({
+          userId: user.id,
+          username: user.username,
+          role: user.role,
+          actionType: "DELETE",
+          tableName: "document_registry",
+          recordId: rec.file_id,
+          description: `Deleted failed extraction: ${rec.file_name}`,
+          ipAddress: req.headers.get("x-forwarded-for") ?? "N/A",
+          userAgent: req.headers.get("user-agent") ?? "Unknown",
+        }),
+      ),
+    );
+
+    return NextResponse.json({
+      success: true,
+      message: `${records.length} record(s) deleted successfully`,
+    });
+  } catch (err: any) {
+    console.error("DELETE Error:", err);
+
+    return NextResponse.json(
+      {
+        success: false,
+        message: err.message || "Unexpected server error",
+      },
+      { status: 500 },
+    );
+  }
+}

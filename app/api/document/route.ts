@@ -15,7 +15,7 @@ function createRlsClient(headers: Record<string, string>) {
     {
       db: { schema: "api" },
       global: { headers },
-    }
+    },
   );
 }
 
@@ -39,7 +39,7 @@ export async function GET(req: Request) {
     if (!user) {
       return NextResponse.json(
         { success: false, message: "Unauthorized" },
-        { status: 401 }
+        { status: 401 },
       );
     }
 
@@ -85,9 +85,7 @@ export async function GET(req: Request) {
     // ----------------------------------
     // Base Query (RLS enforced)
     // ----------------------------------
-    let query = supabase
-      .from("document_user")
-      .select("*", { count: "exact" });
+    let query = supabase.from("document_user").select("*", { count: "exact" });
 
     // ----------------------------------
     // Filters
@@ -115,7 +113,7 @@ export async function GET(req: Request) {
           `comments.ilike.${term}`,
           `property_name.ilike.${term}`,
           `lease_tenant.ilike.${term}`,
-        ].join(",")
+        ].join(","),
       );
     }
 
@@ -146,7 +144,7 @@ export async function GET(req: Request) {
       console.error("Supabase error:", error);
       return NextResponse.json(
         { success: false, message: error.message },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
@@ -184,7 +182,7 @@ export async function GET(req: Request) {
         success: false,
         message: err.message || "Unexpected server error",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -198,22 +196,11 @@ export async function DELETE(req: Request) {
     if (!user) {
       return NextResponse.json(
         { success: false, message: "Unauthorized" },
-        { status: 401 }
+        { status: 401 },
       );
     }
 
-    // 2️⃣ Get document id
-    const { searchParams } = new URL(req.url);
-    const documentId = searchParams.get("id");
-
-    if (!documentId) {
-      return NextResponse.json(
-        { success: false, message: "Document ID required" },
-        { status: 400 }
-      );
-    }
-
-    // 3️⃣ Create RLS client
+    // 2️⃣ RLS headers
     const rlsHeaders = {
       "x-app-role": user.role,
       "x-user-id": user.id,
@@ -222,52 +209,88 @@ export async function DELETE(req: Request) {
 
     const supabase = createRlsClient(rlsHeaders);
 
-    // 4️⃣ Get document first (for audit + file deletion)
-    const { data: doc, error: fetchError } = await supabase
-      .from("document")
-      .select("*")
-      .eq("document_id", documentId)
-      .single();
+    // ------------------------------------------
+    // 🔀 Detect Mode: Single or Bulk Delete
+    // ------------------------------------------
 
-    if (fetchError || !doc) {
+    const { searchParams } = new URL(req.url);
+    const singleId = searchParams.get("id");
+
+    let ids: string[] = [];
+
+    // BULK DELETE MODE
+    if (!singleId) {
+      const body = await req.json().catch(() => null);
+      ids = body?.ids ?? [];
+
+      if (!Array.isArray(ids) || ids.length === 0) {
+        return NextResponse.json(
+          { success: false, message: "No document IDs provided" },
+          { status: 400 },
+        );
+      }
+    }
+
+    // SINGLE DELETE MODE
+    if (singleId) {
+      ids = [singleId];
+    }
+
+    // ------------------------------------------
+    // 3️⃣ Fetch documents first (Audit Logging)
+    // ------------------------------------------
+
+    const { data: docs, error: fetchError } = await supabase
+      .from("document")
+      .select("document_id,file_url")
+      .in("document_id", ids);
+
+    if (fetchError || !docs?.length) {
       return NextResponse.json(
-        { success: false, message: "Document not found" },
-        { status: 404 }
+        { success: false, message: "Document(s) not found" },
+        { status: 404 },
       );
     }
 
-    // 5️⃣ Delete document
+    // ------------------------------------------
+    // 4️⃣ Perform BULK DELETE
+    // ------------------------------------------
+
     const { error: deleteError } = await supabase
       .from("document")
       .delete()
-      .eq("document_id", documentId);
+      .in("document_id", ids);
 
     if (deleteError) {
       console.error(deleteError);
       return NextResponse.json(
         { success: false, message: deleteError.message },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
-    // 6️⃣ Audit Trail
-    await logAuditTrail({
-      userId: user.id,
-      username: user.username,
-      role: user.role,
-      actionType: "DELETE",
-      tableName: "document",
-      recordId: documentId,
-      description: `Deleted document: ${doc.file_url}`,
-      ipAddress: req.headers.get("x-forwarded-for") ?? "N/A",
-      userAgent: req.headers.get("user-agent") ?? "Unknown",
-    });
+    // ------------------------------------------
+    // 5️⃣ Audit Trail (Loop)
+    // ------------------------------------------
+
+    for (const doc of docs) {
+      await logAuditTrail({
+        userId: user.id,
+        username: user.username,
+        role: user.role,
+        actionType: "DELETE",
+        tableName: "document",
+        recordId: doc.document_id,
+        description: `Deleted document: ${doc.file_url}`,
+        ipAddress: req.headers.get("x-forwarded-for") ?? "N/A",
+        userAgent: req.headers.get("user-agent") ?? "Unknown",
+      });
+    }
 
     return NextResponse.json({
       success: true,
-      message: "Document deleted successfully",
+      message: `${ids.length} document(s) deleted successfully`,
     });
-
   } catch (err: any) {
     console.error(err);
 
@@ -276,8 +299,7 @@ export async function DELETE(req: Request) {
         success: false,
         message: err.message || "Unexpected server error",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
-

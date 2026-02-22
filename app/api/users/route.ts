@@ -239,3 +239,110 @@ export async function POST(req: Request) {
     );
   }
 }
+
+/* ==========================================================
+   📌 BULK DELETE USERS
+   Body: { ids: number[] }
+========================================================== */
+export async function DELETE(req: Request) {
+  try {
+    const session = await getServerSession(authOptions);
+
+    if (!session?.user || session.user.role !== "Admin") {
+      return NextResponse.json(
+        { success: false, message: "Forbidden" },
+        { status: 403 },
+      );
+    }
+
+    const { ids } = await req.json();
+
+    if (!Array.isArray(ids) || !ids.length) {
+      return NextResponse.json(
+        { success: false, message: "No user IDs provided" },
+        { status: 400 },
+      );
+    }
+
+    // 🚫 Prevent self delete
+    if (ids.includes(Number(session.user.id))) {
+      return NextResponse.json(
+        { success: false, message: "You cannot delete your own account." },
+        { status: 400 },
+      );
+    }
+
+    // --------------------------------------------------
+    // 1️⃣ Check if any manager still has agents
+    // --------------------------------------------------
+    const { data: managedAgents } = await supabase
+      .from("accounts")
+      .select("manager_id")
+      .in("manager_id", ids);
+
+    if ((managedAgents ?? []).length > 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Cannot delete manager(s) with assigned agents.",
+        },
+        { status: 400 },
+      );
+    }
+
+    // --------------------------------------------------
+    // 2️⃣ Get Supabase Auth IDs
+    // --------------------------------------------------
+    const { data: accounts } = await supabase
+      .from("accounts")
+      .select("user_id, supabase_auth_user_id")
+      .in("user_id", ids);
+
+    // --------------------------------------------------
+    // 3️⃣ Delete AUTH USERS FIRST
+    // --------------------------------------------------
+    for (const acc of accounts ?? []) {
+      if (acc.supabase_auth_user_id) {
+        await supabase.auth.admin.deleteUser(acc.supabase_auth_user_id);
+      }
+    }
+
+    // --------------------------------------------------
+    // 4️⃣ Delete accounts
+    // --------------------------------------------------
+    await supabase.from("accounts").delete().in("user_id", ids);
+
+    // --------------------------------------------------
+    // 5️⃣ Delete usersacc
+    // --------------------------------------------------
+    await supabase.from("usersacc").delete().in("userid", ids);
+
+    // --------------------------------------------------
+    // 6️⃣ AUDIT PER USER
+    // --------------------------------------------------
+    for (const id of ids) {
+      await logAuditTrail({
+        userId: session.user.id,
+        username: session.user.username,
+        role: session.user.role,
+        actionType: "DELETE",
+        tableName: "usersacc",
+        recordId: String(id),
+        description: `Bulk deleted user ${id}`,
+        ipAddress: req.headers.get("x-forwarded-for") ?? "N/A",
+        userAgent: req.headers.get("user-agent") ?? "Unknown",
+      });
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: `${ids.length} user(s) deleted successfully`,
+    });
+  } catch (err: any) {
+    console.error("BULK DELETE USERS:", err);
+    return NextResponse.json(
+      { success: false, message: err.message },
+      { status: 500 },
+    );
+  }
+}

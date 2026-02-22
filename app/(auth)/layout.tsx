@@ -24,11 +24,9 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
     username: string;
   } | null>(null);
 
-  const isLoggingIn = () =>
-    sessionStorage.getItem("isLoggingIn") === "true";
+  const isLoggingIn = () => sessionStorage.getItem("isLoggingIn") === "true";
 
-  const isLoggingOut = () =>
-    sessionStorage.getItem("isLoggingOut") === "true";
+  const isLoggingOut = () => sessionStorage.getItem("isLoggingOut") === "true";
 
   // ==========================================
   // 🔴 SEND OFFLINE (SINGLE-FLIGHT)
@@ -42,10 +40,10 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
 
       navigator.sendBeacon(
         "/api/auth/update-status-offline",
-        JSON.stringify(payload)
+        JSON.stringify(payload),
       );
     },
-    []
+    [],
   );
 
   // ==========================================
@@ -61,11 +59,9 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
-      }).catch((err) =>
-        console.error("Failed to set online:", err)
-      );
+      }).catch((err) => console.error("Failed to set online:", err));
     },
-    []
+    [],
   );
 
   // ==========================================
@@ -110,6 +106,7 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
   // 🔵 TAB CLOSE / BROWSER CLOSE / REFRESH ONLY
   // ==========================================
   useEffect(() => {
+    if (status !== "authenticated") return;
     if (!session?.user) return;
 
     const payload = {
@@ -128,8 +125,8 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
     return () => {
       window.removeEventListener("beforeunload", handleBeforeUnload);
     };
-  }, [sendOffline, session]);
-
+  }, [status, session, sendOffline]);
+  
   // ==========================================
   // ⏱ AUTO LOGOUT AFTER IDLE
   // ==========================================
@@ -137,8 +134,7 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
     if (!session?.user) return;
 
     const checkIdle = async () => {
-      const inactive =
-        sessionStorage.getItem("user-inactive") === "true";
+      const inactive = sessionStorage.getItem("user-inactive") === "true";
       if (!inactive) return;
 
       sessionStorage.setItem("isLoggingOut", "true");
@@ -159,9 +155,7 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
   // ==========================================
   // 🔔 REALTIME (SAFE)
   // ==========================================
-  useRealtimeTest(
-    status === "authenticated" && !!session?.user
-  );
+  useRealtimeTest(status === "authenticated" && !!session?.user);
 
   // ==========================================
   // ⛔ BLOCK RENDER UNTIL READY
@@ -182,9 +176,7 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
         )}
       </div>
 
-      <main className="ml-64 p-6 bg-white">
-        {children}
-      </main>
+      <main className="ml-64 p-6 bg-white">{children}</main>
     </div>
   );
 }

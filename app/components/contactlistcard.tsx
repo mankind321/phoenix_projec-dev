@@ -77,62 +77,6 @@ interface Contact {
   updated_at: string;
 }
 
-/* ------------------ DELETE MODAL ---------------------- */
-function DeleteContactModal({ open, onClose, contact, onDeleted }: any) {
-  const [isDeleting, setIsDeleting] = React.useState(false);
-
-  if (!contact) return null;
-
-  const handleConfirmDelete = async () => {
-    setIsDeleting(true);
-
-    try {
-      const res = await fetch(`/api/contacts/${contact.contact_id}`, {
-        method: "DELETE",
-      });
-      const data = await res.json();
-
-      if (data.success) {
-        toast.success(`Contact ${contact.broker_name} deleted successfully.`);
-        onDeleted();
-        onClose();
-      } else {
-        toast.error(data.message || "Failed to delete contact.");
-      }
-    } catch (_) {
-      toast.error("Something went wrong.");
-    } finally {
-      setIsDeleting(false);
-    }
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Delete Contact</DialogTitle>
-          <DialogDescription>
-            Delete <b>{contact.broker_name}</b>? This action cannot be undone.
-          </DialogDescription>
-        </DialogHeader>
-
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={isDeleting}>
-            Cancel
-          </Button>
-          <Button
-            variant="destructive"
-            onClick={handleConfirmDelete}
-            disabled={isDeleting}
-          >
-            {isDeleting ? "Deleting…" : "Confirm Delete"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
 /* ------------------ MAIN COMPONENT ---------------------- */
 export default function ContactTable() {
   const router = useRouter();
@@ -150,53 +94,100 @@ export default function ContactTable() {
   const [totalRecords, setTotalRecords] = React.useState(0);
   const [totalPages, setTotalPages] = React.useState(1);
 
-  const [deleteOpen, setDeleteOpen] = React.useState(false);
-  const [selectedContact, setSelectedContact] = React.useState<Contact | null>(
-    null,
-  );
-
-  const userId = session?.user?.id;
-  const storageKey = `recent_contact_search_${userId}`;
-
   const [searchInput, setSearchInput] = React.useState("");
   const [recentSearches, setRecentSearches] = React.useState<string[]>([]);
   const [showRecentDropdown, setShowRecentDropdown] = React.useState(false);
 
+  const [rowSelection, setRowSelection] = React.useState({});
+  const [bulkDeleteOpen, setBulkDeleteOpen] = React.useState(false);
+  const [bulkDeleting, setBulkDeleting] = React.useState(false);
+
   const searchWrapperRef = React.useRef<HTMLDivElement>(null);
 
+  const userId = React.useMemo(() => {
+    if (status !== "authenticated") return null;
+    return session?.user?.id ?? null;
+  }, [status, session]);
+
   /* ------------------ FETCH DATA ---------------------- */
-  const loadContacts = React.useCallback(async () => {
-    if (status !== "authenticated") return;
+  const loadContacts = React.useCallback(
+    async (signal?: AbortSignal) => {
+      if (status !== "authenticated") return;
 
-    try {
-      setIsLoading(true);
+      try {
+        setIsLoading(true);
 
-      const res = await fetch(
-        `/api/contacts?page=${page}&pageSize=${pageSize}&search=${encodeURIComponent(
-          globalFilter,
-        )}`,
-      );
+        const res = await fetch(
+          `/api/contacts?page=${page}&pageSize=${pageSize}&search=${encodeURIComponent(globalFilter)}`,
+          { signal }, // 👈 IMPORTANT
+        );
 
-      if (!res.ok) throw new Error("Failed to load contacts");
+        if (!res.ok) throw new Error("Failed to load contacts");
 
-      const data = await res.json();
-      setContacts(data.data || []);
-      setTotalRecords(data.total || 0);
-      setTotalPages(Math.max(1, Math.ceil((data.total || 0) / pageSize)));
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [status, page, pageSize, globalFilter]);
+        const data = await res.json();
+
+        if (!signal?.aborted) {
+          setContacts(data.data || []);
+          setTotalRecords(data.total || 0);
+          setTotalPages(Math.max(1, Math.ceil((data.total || 0) / pageSize)));
+        }
+      } catch (err: any) {
+        if (err.name !== "AbortError") {
+          setError(err.message);
+        }
+      } finally {
+        if (!signal?.aborted) {
+          setIsLoading(false);
+        }
+      }
+    },
+    [status, page, pageSize, globalFilter],
+  );
 
   React.useEffect(() => {
-    loadContacts();
+    const controller = new AbortController();
+
+    loadContacts(controller.signal);
+
+    return () => controller.abort(); // 👈 prevents state update after unmount
   }, [loadContacts]);
 
   /* ------------------ TABLE COLUMNS ---------------------- */
   const columns = React.useMemo<ColumnDef<Contact>[]>(
     () => [
+      {
+        id: "select",
+        header: ({ table }) => (
+          <Can role={["Admin", "Manager"]}>
+            <div className="flex justify-center">
+              <input
+                type="checkbox"
+                className="cursor-pointer"
+                checked={table.getIsAllPageRowsSelected()}
+                onChange={table.getToggleAllPageRowsSelectedHandler()}
+              />
+            </div>
+          </Can>
+        ),
+        cell: ({ row }) => (
+          <Can role={["Admin", "Manager"]}>
+            <div className="flex justify-center">
+              <input
+                type="checkbox"
+                className="cursor-pointer"
+                checked={row.getIsSelected()}
+                disabled={!row.getCanSelect()}
+                onChange={row.getToggleSelectedHandler()}
+              />
+            </div>
+          </Can>
+        ),
+        size: 40,
+        meta: {
+          className: "px-2",
+          headerClassName: "px-2",
+        },
+      },
       {
         id: "icon",
         header: "",
@@ -278,21 +269,8 @@ export default function ContactTable() {
                   router.push(`/dashboard/contact/edit?id=${item.contact_id}`)
                 }
               >
-                <Edit size={16} />
+                <Edit size={16} /> Update
               </Button>
-
-              <Can role={["Admin", "Manager"]}>
-                <Button
-                  size="sm"
-                  variant="destructive"
-                  onClick={() => {
-                    setSelectedContact(item);
-                    setDeleteOpen(true);
-                  }}
-                >
-                  <Trash2 size={16} />
-                </Button>
-              </Can>
             </div>
           );
         },
@@ -302,13 +280,15 @@ export default function ContactTable() {
   );
 
   React.useEffect(() => {
-    if (!userId) return;
+    if (status !== "authenticated" || !userId) return;
 
-    const saved = localStorage.getItem(storageKey);
+    const key = `recent_contact_search_${userId}`;
+
+    const saved = localStorage.getItem(key);
     if (saved) {
       setRecentSearches(JSON.parse(saved));
     }
-  }, [storageKey, userId]);
+  }, [status, userId]);
 
   React.useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -325,6 +305,47 @@ export default function ContactTable() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  const handleBulkDelete = async () => {
+    const selectedIds = Object.keys(rowSelection)
+      .map((rowIndex) => contacts[Number(rowIndex)]?.contact_id)
+      .filter(Boolean);
+
+    if (!selectedIds.length) {
+      toast.error("Please select at least one contact.");
+      return;
+    }
+
+    try {
+      setBulkDeleting(true);
+
+      const loadingToast = toast.loading(
+        `Deleting ${selectedIds.length} contact(s)...`,
+      );
+
+      const res = await fetch("/api/contacts", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: selectedIds }),
+      });
+
+      const json = await res.json();
+
+      if (!json.success) throw new Error(json.message);
+
+      toast.success(`${selectedIds.length} contact(s) deleted`, {
+        id: loadingToast,
+      });
+
+      setRowSelection({});
+      setBulkDeleteOpen(false);
+      loadContacts();
+    } catch (err: any) {
+      toast.error(err.message || "Bulk delete failed");
+    } finally {
+      setBulkDeleting(false);
+    }
+  };
+
   const saveRecentSearch = (value: string) => {
     if (!value || !userId) return;
 
@@ -334,7 +355,8 @@ export default function ContactTable() {
     );
 
     setRecentSearches(updated);
-    localStorage.setItem(storageKey, JSON.stringify(updated));
+    const key = `recent_contact_search_${userId}`;
+    localStorage.setItem(key, JSON.stringify(updated));
   };
 
   const applySearch = () => {
@@ -355,7 +377,8 @@ export default function ContactTable() {
   const removeRecentSearch = (value: string) => {
     const updated = recentSearches.filter((v) => v !== value);
     setRecentSearches(updated);
-    localStorage.setItem(storageKey, JSON.stringify(updated));
+    const key = `recent_contact_search_${userId}`;
+    localStorage.setItem(key, JSON.stringify(updated));
   };
 
   /* ------------------ TABLE INSTANCE ---------------------- */
@@ -365,9 +388,12 @@ export default function ContactTable() {
     state: {
       sorting,
       globalFilter,
+      rowSelection,
     },
     onSortingChange: setSorting,
     onGlobalFilterChange: setGlobalFilter,
+    onRowSelectionChange: setRowSelection,
+    enableRowSelection: true,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
@@ -475,6 +501,27 @@ export default function ContactTable() {
           >
             <Plus size={18} /> Add Contact
           </Button>
+
+          {/* Delete selected button */}
+          <Can role={["Admin", "Manager"]}>
+            <Button
+              variant="destructive"
+              className="mt-2"
+              disabled={bulkDeleting}
+              onClick={() => {
+                if (!Object.keys(rowSelection).length) {
+                  toast.error("Please select at least one contact.");
+                  return;
+                }
+                setBulkDeleteOpen(true);
+              }}
+            >
+              <Trash2 className="w-4 h-4 mr-2" />
+              {bulkDeleting
+                ? "Deleting..."
+                : `Delete Selected (${table.getSelectedRowModel().rows.length})`}
+            </Button>
+          </Can>
         </div>
       </div>
 
@@ -489,7 +536,10 @@ export default function ContactTable() {
                 {hg.headers.map((header) => (
                   <TableHead
                     key={header.id}
-                    className="p-2 font-semibold text-gray-700"
+                    className={
+                      header.column.columnDef.meta?.headerClassName ??
+                      "p-2 font-semibold text-gray-700"
+                    }
                     style={{ width: header.getSize() }}
                   >
                     {flexRender(
@@ -519,7 +569,13 @@ export default function ContactTable() {
                   className="border-t hover:bg-gray-50 transition-colors"
                 >
                   {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id} className="p-2 max-w-0 truncate">
+                    <TableCell
+                      key={cell.id}
+                      className={
+                        cell.column.columnDef.meta?.className ??
+                        "p-2 max-w-0 truncate"
+                      }
+                    >
                       {flexRender(
                         cell.column.columnDef.cell,
                         cell.getContext(),
@@ -573,12 +629,35 @@ export default function ContactTable() {
         </div>
       </div>
 
-      <DeleteContactModal
-        open={deleteOpen}
-        onClose={() => setDeleteOpen(false)}
-        contact={selectedContact}
-        onDeleted={loadContacts}
-      />
+      <Dialog open={bulkDeleteOpen} onOpenChange={setBulkDeleteOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Selected Contacts?</DialogTitle>
+            <DialogDescription>
+              This action cannot be undone. Selected contacts will be
+              permanently removed.
+            </DialogDescription>
+          </DialogHeader>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setBulkDeleteOpen(false)}
+              disabled={bulkDeleting}
+            >
+              Cancel
+            </Button>
+
+            <Button
+              variant="destructive"
+              onClick={handleBulkDelete}
+              disabled={bulkDeleting}
+            >
+              {bulkDeleting ? "Deleting..." : "Confirm Delete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

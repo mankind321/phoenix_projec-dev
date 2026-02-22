@@ -15,7 +15,7 @@ function createRlsClient(headers: Record<string, string>) {
     {
       db: { schema: "api" },
       global: { headers },
-    }
+    },
   );
 }
 
@@ -65,7 +65,9 @@ export async function GET(req: Request) {
     const offset = (page - 1) * pageSize;
 
     const search = searchParams.get("search")?.trim() || "";
-    const sortField = ALLOWED_SORT_FIELDS.has(searchParams.get("sortField") ?? "")
+    const sortField = ALLOWED_SORT_FIELDS.has(
+      searchParams.get("sortField") ?? "",
+    )
       ? String(searchParams.get("sortField"))
       : "created_at";
     const sortOrder =
@@ -92,7 +94,7 @@ export async function GET(req: Request) {
         created_at,
         updated_at
         `,
-        { count: "exact" }
+        { count: "exact" },
       )
       .order(sortField, { ascending: sortOrder === "asc" })
       .range(offset, offset + pageSize - 1);
@@ -100,7 +102,7 @@ export async function GET(req: Request) {
     // Search filter
     if (search) {
       query = query.or(
-        `broker_name.ilike.%${search}%,listing_company.ilike.%${search}%,email.ilike.%${search}%,phone.ilike.%${search}%`
+        `broker_name.ilike.%${search}%,listing_company.ilike.%${search}%,email.ilike.%${search}%,phone.ilike.%${search}%`,
       );
     }
 
@@ -120,7 +122,7 @@ export async function GET(req: Request) {
     console.error("GET Error:", err);
     return NextResponse.json(
       { error: err.message || "Unexpected server error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -147,18 +149,13 @@ export async function POST(req: Request) {
     const body = await req.json();
 
     // 3️⃣ Validation
-    const required = [
-      "listing_company",
-      "broker_name",
-      "phone",
-      "email",
-    ];
+    const required = ["listing_company", "broker_name", "phone", "email"];
 
     for (const field of required) {
       if (!body[field] || body[field].trim() === "") {
         return NextResponse.json(
           { error: `Missing required field: ${field}` },
-          { status: 400 }
+          { status: 400 },
         );
       }
     }
@@ -208,7 +205,10 @@ export async function POST(req: Request) {
 
     if (assignmentErr) {
       console.error("Assignment Insert Error:", assignmentErr);
-      return NextResponse.json({ error: assignmentErr.message }, { status: 500 });
+      return NextResponse.json(
+        { error: assignmentErr.message },
+        { status: 500 },
+      );
     }
 
     // 6️⃣ Audit log
@@ -228,7 +228,122 @@ export async function POST(req: Request) {
     console.error("POST Error:", err);
     return NextResponse.json(
       { error: err.message || "Unexpected server error" },
-      { status: 500 }
+      { status: 500 },
+    );
+  }
+}
+
+/* ==========================================================
+   📌 DELETE — BULK DELETE CONTACTS
+   Body: { ids: string[] }
+========================================================== */
+export async function DELETE(req: Request) {
+  try {
+    // 1️⃣ Validate session
+    const session = await getServerSession(authOptions);
+    if (!session?.user) {
+      return NextResponse.json(
+        { success: false, message: "Unauthorized" },
+        { status: 401 },
+      );
+    }
+
+    // 2️⃣ Parse body
+    const { ids } = await req.json();
+
+    if (!Array.isArray(ids) || !ids.length) {
+      return NextResponse.json(
+        { success: false, message: "No contact IDs provided" },
+        { status: 400 },
+      );
+    }
+
+    // 3️⃣ RLS Headers
+    const rlsHeaders = {
+      "x-app-role": session.user.role,
+      "x-user-id": session.user.id,
+      "x-account-id": session.user.accountId ?? "",
+    };
+
+    const supabase = createRlsClient(rlsHeaders);
+
+    // -----------------------------------------
+    // 4️⃣ Fetch old contacts for audit logging
+    // -----------------------------------------
+    const { data: oldContacts, error: fetchErr } = await supabase
+      .from("contact")
+      .select("contact_id, broker_name")
+      .in("contact_id", ids);
+
+    if (fetchErr) {
+      return NextResponse.json(
+        { success: false, message: fetchErr.message },
+        { status: 500 },
+      );
+    }
+
+    // -----------------------------------------
+    // 5️⃣ Delete assignments first
+    // -----------------------------------------
+    const { error: assignDeleteErr } = await supabase
+      .from("contact_assignment")
+      .delete()
+      .in("contact_id", ids);
+
+    if (assignDeleteErr) {
+      return NextResponse.json(
+        { success: false, message: assignDeleteErr.message },
+        { status: 500 },
+      );
+    }
+
+    // -----------------------------------------
+    // 6️⃣ Delete contacts
+    // -----------------------------------------
+    const { error: contactDeleteErr } = await supabase
+      .from("contact")
+      .delete()
+      .in("contact_id", ids);
+
+    if (contactDeleteErr) {
+      return NextResponse.json(
+        { success: false, message: contactDeleteErr.message },
+        { status: 500 },
+      );
+    }
+
+    // -----------------------------------------
+    // 7️⃣ Audit per contact
+    // -----------------------------------------
+    if (oldContacts?.length) {
+      for (const c of oldContacts) {
+        await logAuditTrail({
+          userId: session.user.id,
+          username: session.user.username,
+          role: session.user.role,
+          actionType: "DELETE",
+          tableName: "contact",
+          recordId: c.contact_id,
+          description: `Bulk deleted contact: ${c.broker_name}`,
+          ipAddress: req.headers.get("x-forwarded-for") ?? "N/A",
+          userAgent: req.headers.get("user-agent") ?? "Unknown",
+        });
+      }
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: `${ids.length} contact(s) deleted successfully`,
+    });
+  } catch (err: any) {
+    console.error("BULK DELETE ERROR:", err);
+
+    return NextResponse.json(
+      {
+        success: false,
+        message: err.message || "Unexpected server error",
+      },
+      { status: 500 },
     );
   }
 }
