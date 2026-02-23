@@ -1,8 +1,13 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { createClient } from "@supabase/supabase-js";
 
+let realtimeClient: any = null;   // 👈 SINGLETON
+
 export function createRealtimeClient(accessToken: string) {
-  const supabase = createClient(
+
+  if (realtimeClient) return realtimeClient;
+
+  realtimeClient = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
@@ -11,33 +16,13 @@ export function createRealtimeClient(accessToken: string) {
         autoRefreshToken: false,
       },
       realtime: {
-        params: {
-          eventsPerSecond: 10,
-        },
+        params: { eventsPerSecond: 10 },
       },
     }
   );
 
-  // 🔎 LOG JWT (sanity check)
-  console.log("[realtime] JWT (first 30 chars):", accessToken.slice(0, 30));
+  // 🔑 REQUIRED AFTER SOCKET EXISTS
+  realtimeClient.realtime.setAuth(accessToken);
 
-  // 🔑 REQUIRED for Realtime RLS
-  supabase.realtime.setAuth(accessToken);
-
-  // ⚠️ INTERNAL SOCKET (cast required)
-  const realtimeAny = supabase.realtime as any;
-
-  realtimeAny.socket?.onOpen(() => {
-    console.log("[realtime] socket OPEN");
-  });
-
-  realtimeAny.socket?.onClose((e: any) => {
-    console.error("[realtime] socket CLOSED", e);
-  });
-
-  realtimeAny.socket?.onError((e: any) => {
-    console.error("[realtime] socket ERROR", e);
-  });
-
-  return supabase;
+  return realtimeClient;
 }

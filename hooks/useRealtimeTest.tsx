@@ -4,14 +4,19 @@
 import { useEffect, useRef } from "react";
 import { toast } from "sonner";
 import { useSession } from "next-auth/react";
-import { useRouter } from "next/navigation";
-import { createRealtimeClient } from "@/lib/supabaseRealtimeClient";
 import type {
   RealtimePostgresInsertPayload,
   RealtimeChannel,
 } from "@supabase/supabase-js";
 
+import { createRealtimeClient } from "@/lib/supabaseRealtimeClient";
+import {
+  acquireRealtimeChannel,
+  releaseRealtimeChannel,
+} from "@/lib/realtimeChannelLock";
+
 type DocumentRegistryRow = {
+  file_id: string;
   user_id: string | null;
   file_name: string | null;
   extraction_status: "PASSED" | "FAILED" | string;
@@ -27,26 +32,99 @@ export function useRealtimeTest(
   },
 ) {
   const { data: session } = useSession();
-  const router = useRouter();
 
-  const subscribedRef = useRef(false);
   const channelRef = useRef<RealtimeChannel | null>(null);
-  const supabaseRef = useRef<any>(null);
+  const processedRef = useRef<Set<string>>(new Set());
+
+  async function checkDuplicateLease(fileId: string) {
+    try {
+      const res = await fetch("/api/check-duplicate/lease", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ file_id: fileId }),
+      });
+
+      const json = await res.json();
+
+      if (json.success && json.duplicates?.length > 0) {
+        const tenantList = json.duplicates.map(
+          (d: any) => d.tenant ?? "Unknown Tenant",
+        );
+
+        const toastId = `dup-lease-${fileId}`;
+
+        toast.warning(
+          <div
+            onClick={() => toast.dismiss(toastId)}
+            style={{ cursor: "pointer", width: "100%" }}
+          >
+            <div>Duplicate tenant information detected. To maintain data integrity, the following record(s) will not be included in the saved dataset:</div>
+
+            <ul style={{ marginTop: 6, paddingLeft: 18 }}>
+              {tenantList.map((t: string, idx: number) => (
+                <li key={`${toastId}-tenant-${idx}`}>{t}</li>
+              ))}
+            </ul>
+          </div>,
+          { id: toastId, duration: 30000 },
+        );
+      }
+    } catch (err) {
+      console.error("Duplicate lease lookup failed:", err);
+    }
+  }
+
+  async function checkDuplicateProperty(fileId: string) {
+    try {
+      const res = await fetch("/api/check-duplicate/property", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ file_id: fileId }),
+      });
+
+      const json = await res.json();
+
+      if (json.success && json.duplicates?.length > 0) {
+        const propertyList = json.duplicates.map(
+          (d: any) => d.property_name ?? "Unknown Property",
+        );
+        const toastId = `dup-prop-${fileId}`;
+
+        toast.warning(
+          <div
+            onClick={() => toast.dismiss(toastId)}
+            style={{ cursor: "pointer", width: "100%" }}
+          >
+            <div>Duplicate property information(s) detected and will not be saved:</div>
+
+            <ul style={{ marginTop: 6, paddingLeft: 18 }}>
+              {propertyList.map((p: string, idx: number) => (
+                <li key={`${toastId}-${idx}`}>{p}</li>
+              ))}
+            </ul>
+          </div>,
+          { id: toastId, duration: 30000 },
+        );
+      }
+    } catch (err) {
+      console.error("Duplicate property lookup failed:", err);
+    }
+  }
 
   useEffect(() => {
     const userId = session?.user?.id;
+    if (!enabled || !userId) return;
 
-    if (!enabled || !userId || subscribedRef.current) return;
+    // 🚨 prevents duplicate websocket clients
+    if (!acquireRealtimeChannel()) return;
 
     async function init() {
       try {
         const res = await fetch("/api/realtime-token", { method: "POST" });
         const json = await res.json();
-
         if (!json.success) throw new Error("Realtime token failed");
 
         const supabase = createRealtimeClient(json.access_token);
-        supabaseRef.current = supabase;
 
         const channel = supabase
           .channel(`document-extraction-alerts:${userId}`)
@@ -60,43 +138,40 @@ export function useRealtimeTest(
             },
             (payload: RealtimePostgresInsertPayload<DocumentRegistryRow>) => {
               const row = payload.new;
-
               if (row.user_id !== userId) return;
 
-              const toastId = `doc-${row.user_id}-${row.file_name}-${row.extraction_status}`;
+              const toastId = `doc-${row.file_id}`;
 
-              // ========================
-              // SUCCESS
-              // ========================
               if (row.extraction_status === "PASSED") {
                 const normalizedDocType = (row.document_type ?? "")
-                  .toString()
                   .toUpperCase()
                   .replace(/[\s_]/g, "");
 
                 const isRentRoll = normalizedDocType === "RENTROLL";
 
-                const message = isRentRoll
-                  ? `Data extraction for "${row.file_name ?? "document"}" completed. View Data on the Tenant Page`
-                  : `Data extraction for "${row.file_name ?? "document"}" completed. Data will be sent to Review Page for evaluation.`;
-
                 toast.success(
                   <div
                     onClick={() => toast.dismiss(toastId)}
-                    style={{
-                      cursor: "pointer",
-                      width: "100%",
-                    }}
+                    style={{ cursor: "pointer", width: "100%" }}
                   >
-                    {message}
+                    {`Data extraction for "${row.file_name ?? "document"}" completed.`}
                   </div>,
-                  {
-                    id: toastId,
-                    duration: 30_000,
-                  },
+                  { id: toastId, duration: 30000 },
                 );
 
-                // 🔽 ROUTE EVENT BASED ON DOCUMENT TYPE
+                // 🔒 idempotent duplicate check
+                if (!processedRef.current.has(row.file_id)) {
+                  processedRef.current.add(row.file_id);
+
+                  setTimeout(() => {
+                    if (isRentRoll) {
+                      void checkDuplicateLease(row.file_id);
+                    } else {
+                      void checkDuplicateProperty(row.file_id);
+                    }
+                  }, 1500);
+                }
+
                 if (isRentRoll) {
                   options?.onTenantReady?.();
                 } else {
@@ -104,44 +179,27 @@ export function useRealtimeTest(
                 }
               }
 
-              // ========================
-              // FAILED
-              // ========================
               if (row.extraction_status === "FAILED") {
-                const message = `Extraction failed for "${row.file_name ?? "document"}". Please refer to the Error Document List under Document Page to investigate and resolve issues`;
-
                 toast.error(
                   <div
                     onClick={() => toast.dismiss(toastId)}
-                    style={{
-                      cursor: "pointer",
-                      width: "100%",
-                    }}
+                    style={{ cursor: "pointer", width: "100%" }}
                   >
-                    {message}
+                    {`Extraction failed for "${row.file_name ?? "document"}".`}
                   </div>,
-                  {
-                    id: toastId,
-                    duration: 30_000,
-                  },
+                  { id: toastId, duration: 30000 },
                 );
 
                 options?.onExtractionFailed?.();
               }
             },
           )
-          .subscribe((status, err) => {
-            if (err) {
-              console.error("[realtime] channel error:", err);
-            }
-
+          .subscribe((status: string) => {
             if (status === "SUBSCRIBED") {
-              subscribedRef.current = true;
               console.log("[realtime] subscribed");
             }
 
             if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
-              subscribedRef.current = false;
               console.error("[realtime] subscription failed");
             }
           });
@@ -149,21 +207,17 @@ export function useRealtimeTest(
         channelRef.current = channel;
       } catch (err) {
         console.error("[realtime] init failed", err);
-        subscribedRef.current = false;
       }
     }
 
     init();
 
     return () => {
-      subscribedRef.current = false;
-
-      if (supabaseRef.current && channelRef.current) {
-        supabaseRef.current.removeChannel(channelRef.current);
+      releaseRealtimeChannel();
+      if (channelRef.current) {
+        channelRef.current.unsubscribe();
       }
-
       channelRef.current = null;
-      supabaseRef.current = null;
     };
-  }, [enabled, options, session?.user?.id, router]);
+  }, [enabled, options, session?.user?.id]);
 }
