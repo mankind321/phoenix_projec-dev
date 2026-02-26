@@ -513,6 +513,7 @@ export default function ContactFormPage() {
               value={relationText}
               onChange={(e) => setRelationText(e.target.value)}
               placeholder="Owner, Broker, Tenant Rep..."
+              disabled={!isEditing}
             />
           </div>
 
