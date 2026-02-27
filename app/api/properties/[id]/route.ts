@@ -22,7 +22,7 @@ function createRlsClient(headers: Record<string, string>) {
     {
       db: { schema: "api" },
       global: { headers },
-    }
+    },
   );
 }
 
@@ -30,7 +30,7 @@ function createRlsClient(headers: Record<string, string>) {
 // ☁️ GCP STORAGE + SIGNED URL HELPER
 // ----------------------------------------------
 const credentials = JSON.parse(
-  process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON!
+  process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON!,
 );
 
 const storage = new Storage({
@@ -62,7 +62,7 @@ async function getSignedUrl(path: string): Promise<string | null> {
 // ----------------------------------------------
 export async function GET(
   req: Request,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     const { id: propertyId } = await params;
@@ -70,7 +70,7 @@ export async function GET(
     if (!propertyId) {
       return NextResponse.json(
         { success: false, message: "Property ID is required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -79,7 +79,7 @@ export async function GET(
     if (!session?.user) {
       return NextResponse.json(
         { success: false, message: "Unauthorized" },
-        { status: 401 }
+        { status: 401 },
       );
     }
 
@@ -105,15 +105,15 @@ export async function GET(
     if (!property) {
       return NextResponse.json(
         { success: false, message: "Property not found" },
-        { status: 404 }
+        { status: 404 },
       );
     }
 
     // ----------------------------------------------
     // 5️⃣ Fetch leases
     // ----------------------------------------------
-    const [{ data: activeLeases }, { data: expiredLeases }] =
-      await Promise.all([
+    const [{ data: activeLeases }, { data: expiredLeases }] = await Promise.all(
+      [
         supabase
           .from("lease")
           .select("*")
@@ -124,7 +124,8 @@ export async function GET(
           .select("*")
           .eq("property_id", propertyId)
           .eq("status", "expired"),
-      ]);
+      ],
+    );
 
     // ----------------------------------------------
     // 6️⃣ Fetch images
@@ -142,7 +143,7 @@ export async function GET(
       (documents ?? []).map(async (doc) => ({
         ...doc,
         file_url: await getSignedUrl(doc.file_url),
-      }))
+      })),
     );
 
     // ----------------------------------------------
@@ -163,6 +164,7 @@ export async function GET(
       .from("document")
       .select("file_url, doc_type")
       .eq("property_id", propertyId)
+      .is("lease_id", null) // <-- add this
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -210,7 +212,7 @@ export async function GET(
     console.error("GET /property/[id] Error:", err);
     return NextResponse.json(
       { success: false, message: err.message || "Server error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -220,7 +222,7 @@ export async function GET(
 // ----------------------------------------------
 export async function DELETE(
   req: Request,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     const { id: propertyId } = await params;
@@ -228,7 +230,7 @@ export async function DELETE(
     if (!propertyId) {
       return NextResponse.json(
         { success: false, message: "Property ID is required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -236,7 +238,7 @@ export async function DELETE(
     if (!session?.user) {
       return NextResponse.json(
         { success: false, message: "Unauthorized" },
-        { status: 401 }
+        { status: 401 },
       );
     }
 
@@ -260,7 +262,7 @@ export async function DELETE(
     if (!property) {
       return NextResponse.json(
         { success: false, message: "Property not found" },
-        { status: 404 }
+        { status: 404 },
       );
     }
 
@@ -293,7 +295,7 @@ export async function DELETE(
     console.error("DELETE /property/[id] Error:", err);
     return NextResponse.json(
       { success: false, message: err.message || "Server error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
