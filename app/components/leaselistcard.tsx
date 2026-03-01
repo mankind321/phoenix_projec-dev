@@ -41,6 +41,32 @@ type Lease = {
   [key: string]: any;
 };
 
+function isAiQueryFrontend(text: string): boolean {
+  if (!text) return false;
+
+  const t = text.toLowerCase().trim();
+
+  const aiKeywords = [
+    "find",
+    "show",
+    "list",
+    "leases",
+    "tenant",
+    "property",
+    "landlord",
+    "active",
+    "expired",
+    "expiring",
+    "before",
+    "after",
+    "between",
+    "ending",
+    "starting",
+  ];
+
+  return aiKeywords.some((k) => t.includes(k));
+}
+
 export default function LeaseListPage() {
   const router = useRouter();
 
@@ -85,7 +111,13 @@ export default function LeaseListPage() {
       params.set("page", String(page));
       params.set("pageSize", String(pageSize));
 
-      if (search) params.set("search", search);
+      if (search) {
+        if (isAiQueryFrontend(search)) {
+          params.set("query", search);
+        } else {
+          params.set("search", search);
+        }
+      }
       if (status !== "all") params.set("status", status);
       if (fromDate) params.set("fromDate", fromDate);
       if (toDate) params.set("toDate", toDate);

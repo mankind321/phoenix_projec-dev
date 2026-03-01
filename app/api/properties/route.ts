@@ -33,27 +33,41 @@ function createRlsClient(headers: Record<string, string>) {
 function isAiQuery(text: string | null): boolean {
   if (!text) return false;
 
-  // Normalize input
-  const t = text.toLowerCase().trim().replace(/\s+/g, " "); // collapse multiple spaces
+  const t = text.toLowerCase().trim().replace(/\s+/g, " ");
 
   console.log("🧠 isAiQuery normalized input:", JSON.stringify(t));
 
-  // -------------------------------------------------
-  // RULE 1: Detect address patterns → NOT AI SEARCH
-  // Examples:
-  //  - "351 quarry"
-  //  - "123 main street"
-  //  - "1000 market st"
-  // -------------------------------------------------
+  // -----------------------------------------
+  // 1️⃣ Detect numeric street address → NOT AI
+  // -----------------------------------------
   const addressPattern = /^[\d]+\s+[a-z]/i;
   if (addressPattern.test(t)) {
     console.log("📍 Detected address pattern → Traditional search");
     return false;
   }
 
-  // -------------------------------------------------
-  // RULE 2: Detect natural-language AI intent keywords
-  // -------------------------------------------------
+  // -----------------------------------------
+  // 2️⃣ Financial / Investment Indicators
+  // -----------------------------------------
+  const financialPattern = /\b(\d+(\.\d+)?\s?(k|m|million|b|billion))\b/;
+
+  const percentPattern = /\b\d+(\.\d+)?\s?%|\bpercent\b|\bcap\b/;
+
+  const comparisonPattern =
+    /\b(above|below|over|under|more than|less than|between|to)\b/;
+
+  if (
+    financialPattern.test(t) ||
+    percentPattern.test(t) ||
+    comparisonPattern.test(t)
+  ) {
+    console.log("💰 Financial pattern detected → AI search");
+    return true;
+  }
+
+  // -----------------------------------------
+  // 3️⃣ Natural language intent keywords
+  // -----------------------------------------
   const aiKeywords = [
     "near",
     "nearby",
@@ -65,39 +79,24 @@ function isAiQuery(text: string | null): boolean {
     "next to",
     "beside",
     "km",
-    "kilometer",
-    "kilometers",
     "mile",
-    "miles",
     "meter",
-    "meters",
     "walking distance",
     "driving distance",
-
-    // Intent-based phrases
     "find",
     "show me",
     "search for",
     "looking for",
-    "properties in",
-    "apartments in",
-    "buildings in",
-    "offices in",
-    "commercial in",
-    "for sale in",
-    "for rent in",
   ];
 
-  const hasKeyword = aiKeywords.some((keyword) => t.includes(keyword));
-
-  if (hasKeyword) {
+  if (aiKeywords.some((keyword) => t.includes(keyword))) {
     console.log("🤖 AI intent keyword detected → AI search");
     return true;
   }
 
-  // -------------------------------------------------
-  // RULE 3: Detect question-based AI queries
-  // -------------------------------------------------
+  // -----------------------------------------
+  // 4️⃣ Question pattern
+  // -----------------------------------------
   const questionPattern = /^(where|find|show|list|get|search|what|which)\b/i;
 
   if (questionPattern.test(t)) {
@@ -105,13 +104,9 @@ function isAiQuery(text: string | null): boolean {
     return true;
   }
 
-  // -------------------------------------------------
-  // RULE 4: Everything else → Traditional search
-  // -------------------------------------------------
   console.log("📄 No AI intent detected → Traditional search");
   return false;
 }
-
 // ----------------------------------------------
 // ☁️ Google Cloud Storage
 // ----------------------------------------------
@@ -279,7 +274,7 @@ async function extractParams(prompt: string) {
 
   const model = genAI.getGenerativeModel({ model: MODEL });
   const instruction = `
-You are an expert real-estate spatial query parser.
+You are an expert real-estate spatial and financial query parser.
 
 Extract the user's intent and convert it into structured JSON.
 
@@ -295,147 +290,242 @@ If the user specifies a radius or distance such as:
 - near
 - nearby
 - around
+- within X meters
 
 Then the mentioned place becomes a GEO-SPATIAL CENTER POINT.
 
 In this case:
 - Extract the place into "location_text"
 - Convert distance into meters → "radius_m"
-
 - DO NOT treat the place as administrative filters
 - Set:
     "city" = null
     "state" = null
-
-- Set:
     "origin_lat" = null
     "origin_lng" = null
 
+--------------------------------------------------
+2. EXACT OR PARTIAL STREET ADDRESS RULE
+--------------------------------------------------
+
+If the user enters:
+- A numeric street address (e.g. "351 Quarry Rd")
+- A street name (e.g. "Quarry Road")
+- A building address
+- A specific road, street, avenue, boulevard, drive, lane
+
+Then treat it as an ADDRESS SEARCH.
+
+In this case:
+- Set "location_text" = full address phrase
+- Set:
+    "city" = null
+    "state" = null
+    "radius_m" = null
+
+Do NOT treat street-level addresses as city or state.
 
 --------------------------------------------------
-2. ADMINISTRATIVE LOCATION RULE
+3. ADMINISTRATIVE LOCATION RULE
 --------------------------------------------------
 
-If the user mentions a location WITHOUT using words like:
-- near
-- nearby
-- around
-- within
+If the user mentions a location WITHOUT radius words
+and it is NOT a street-level address:
 
-Then treat it as an administrative location search.
+Treat it as an administrative location search.
 
-Determine whether the location refers to a CITY or a STATE using these rules:
+Use the following logic:
 
-A. If the location is a known U.S. state name
+A. If the location matches a known state name
    (e.g. Texas, California, Florida, New York),
-   then:
-     - Set "state"
-     - Set "city" = null
+   → Set "state"
+   → Set "city" = null
 
 B. If the location is a 2-letter state abbreviation
    (e.g. TX, CA, NY),
-   then:
-     - Set "state"
-     - Set "city" = null
+   → Set "state"
+   → Set "city" = null
 
-C. If the user explicitly includes:
-   - "city"
-   - "downtown"
-   - "metro"
-   - or writes "New York City"
-   then:
-     - Set "city"
-     - Set "state" = null
-
-D. If the location contains a comma:
+C. If the location contains a comma
    Example: "Charlotte, NC"
-     - Left side = city
-     - Right side = state
+   → Left side = city
+   → Right side = state
 
-E. If the location is ambiguous
-   (e.g. "New York", "Washington", "Oklahoma")
-   then:
-     - Default to STATE
+D. If the location is a multi-word proper noun
+   and does NOT match a known state,
+   → Treat it as a CITY.
 
-Examples:
+   Examples:
+   - "Cagayan de Oro"
+   - "Los Angeles"
+   - "San Francisco"
+   - "Davao"
+   - "Cebu"
+   - "Taguig"
 
-"New York"
-→ city = null
-→ state = "New York"
+   → Set "city" = full phrase
+   → Set "state" = null
 
-"New York City"
-→ city = "New York"
-→ state = null
+E. If unsure and the location is not in the state list,
+   default to CITY.
 
-"Charlotte"
-→ city = "Charlotte"
-→ state = null
-
-"Texas"
-→ city = null
-→ state = "Texas"
-
-"Charlotte, NC"
-→ city = "Charlotte"
-→ state = "NC"
-
+Only default to STATE if it clearly matches a known state.
 
 --------------------------------------------------
-3. DISTANCE NORMALIZATION RULE
+4. DISTANCE NORMALIZATION RULE
 --------------------------------------------------
 
 Always convert:
 - miles → meters
 - kilometers → meters
 
-
 --------------------------------------------------
-4. PROPERTY TYPE RULE
+5. PROPERTY TYPE RULE
 --------------------------------------------------
 
-If the user mentions a specific property type
+If the user mentions a property type
 (e.g. Fast Food, Warehouse, Office, Retail, Industrial),
 extract it EXACTLY as written.
 
-
 --------------------------------------------------
-5. STATUS RULE
---------------------------------------------------
-
-If the user mentions:
-
-- available
-- vacant
-- active
-→ status = "Available"
-
-- leased
-→ status = "Leased"
-
-- sold
-→ status = "Sold"
-
-- pending
-→ status = "Pending"
-
-- off market
-→ status = "Off Market"
-
-- occupied
-→ status = "Occupied"
-
-- under maintenance
-→ status = "Under Maintenance"
-
-- not available
-→ status = "Not Available"
-
-
---------------------------------------------------
-6. JSON OUTPUT FORMAT
+6. STATUS RULE
 --------------------------------------------------
 
-Return ONLY valid JSON:
+Map user status terms to these exact values:
+
+Available
+Leased
+Sold
+Pending
+Off Market
+Occupied
+Under Maintenance
+Not Available
+
+--------------------------------------------------
+7. PRICE PARSING RULE
+--------------------------------------------------
+
+Extract price constraints into:
+
+- "min_price"
+- "max_price"
+
+A. GREATER THAN / OVER / MORE THAN / ABOVE
+Examples:
+- "more than 2m"
+- "over 3 million"
+- "above 750k"
+
+→ Set:
+    min_price = parsed amount
+    max_price = null
+
+B. LESS THAN / BELOW / UNDER
+Examples:
+- "below 2m"
+- "under 5 million"
+- "less than 750k"
+
+→ Set:
+    min_price = null
+    max_price = parsed amount
+
+C. BETWEEN RANGE
+Examples:
+- "between 1m and 3m"
+- "1 million to 2 million"
+- "from 500k to 1.5m"
+
+→ Set:
+    min_price = lower value
+    max_price = higher value
+
+D. EXACT PRICE
+Example:
+- "2 million property"
+
+→ Set:
+    min_price = value
+    max_price = value
+
+--------------------------------------------------
+8. PRICE NORMALIZATION RULE
+--------------------------------------------------
+
+Normalize numeric expressions:
+
+- k → multiply by 1,000
+  Example: 750k → 750000
+
+- m or million → multiply by 1,000,000
+  Example: 2m → 2000000
+
+- b or billion → multiply by 1,000,000,000
+
+Always return numeric values (not strings).
+
+--------------------------------------------------
+9. CAP RATE PARSING RULE
+--------------------------------------------------
+
+Extract cap rate constraints into:
+
+- "min_cap_rate"
+- "max_cap_rate"
+
+If a number is followed by "%" or the word "percent",
+it refers to CAP RATE — NOT price.
+
+A. GREATER THAN / ABOVE / OVER
+Examples:
+- "cap rate above 5%"
+- "more than 6 cap"
+- "over 7.5 percent"
+
+→ Set:
+    min_cap_rate = numeric value
+    max_cap_rate = null
+
+B. LESS THAN / BELOW / UNDER
+Examples:
+- "cap rate below 5%"
+- "under 6 percent"
+
+→ Set:
+    min_cap_rate = null
+    max_cap_rate = numeric value
+
+C. BETWEEN RANGE
+Examples:
+- "cap rate between 5% and 7%"
+- "5 to 8 percent cap"
+
+→ Set:
+    min_cap_rate = lower value
+    max_cap_rate = higher value
+
+D. EXACT VALUE
+Example:
+- "5% cap rate"
+
+→ Set:
+    min_cap_rate = value
+    max_cap_rate = value
+
+--------------------------------------------------
+10. CAP RATE NORMALIZATION RULE
+--------------------------------------------------
+
+- Remove "%" symbol if present
+- Keep numeric format (e.g. 5.0, 6.25)
+- Do NOT convert to decimal (keep as percentage number)
+
+--------------------------------------------------
+11. JSON OUTPUT FORMAT
+--------------------------------------------------
+
+Return ONLY valid JSON in this exact format:
 
 {
   "location_text": string | null,
@@ -446,9 +536,13 @@ Return ONLY valid JSON:
   "status": string | null,
   "min_price": number | null,
   "max_price": number | null,
+  "min_cap_rate": number | null,
+  "max_cap_rate": number | null,
   "city": string | null,
   "state": string | null
 }
+
+If a value does not exist, return null.
 
 User text: "${prompt}"
 `;
@@ -489,6 +583,8 @@ User text: "${prompt}"
       status: null,
       min_price: null,
       max_price: null,
+      min_cap_rate: null,
+      max_cap_rate: null,
       city: null,
       state: null,
     };
@@ -723,13 +819,23 @@ export async function GET(req: Request) {
       // Only apply for NON-radius searches
       // ----------------------------------------------
       const hasAdminLocation = params.city || params.state;
+
+      const hasAddressSearch = !isRadiusSearch && params.location_text;
+
       const hasSemanticFilters =
         params.property_type ||
         params.status ||
         params.min_price ||
-        params.max_price;
+        params.max_price ||
+        params.min_cap_rate ||
+        params.max_cap_rate;
 
-      if (!isRadiusSearch && !hasAdminLocation && !hasSemanticFilters) {
+      if (
+        !isRadiusSearch &&
+        !hasAdminLocation &&
+        !hasAddressSearch &&
+        !hasSemanticFilters
+      ) {
         console.warn("⛔ AI search aborted — no valid filters");
 
         return NextResponse.json({
@@ -772,7 +878,7 @@ export async function GET(req: Request) {
         params.origin_lng = geo.lng;
       }
       const { data, error } = await supabase.rpc(
-        "search_properties_by_radius_with_image",
+        "search_properties_by_radius",
         {
           p_lat: params.origin_lat,
           p_lng: params.origin_lng,
@@ -780,12 +886,24 @@ export async function GET(req: Request) {
             params.origin_lat && params.origin_lng
               ? Math.round(Number(params.radius_m))
               : null,
+
           p_type: params.property_type,
           p_status: params.status,
+
           p_min_price: params.min_price,
           p_max_price: params.max_price,
+
+          // ✅ CAP RATE SUPPORT
+          p_min_cap_rate: params.min_cap_rate,
+          p_max_cap_rate: params.max_cap_rate,
+
           p_city: params.city,
           p_state: params.state,
+
+          p_address:
+            !isRadiusSearch && params.location_text
+              ? params.location_text
+              : null,
         },
       );
 
@@ -801,9 +919,28 @@ export async function GET(req: Request) {
         });
       }
 
+      const SORT_MAP: Record<string, string> = {
+        property_created_at: "created_at",
+        property_updated_at: "updated_at",
+        price: "price",
+        cap_rate: "cap_rate",
+        name: "name",
+      };
+
+      const dbField = SORT_MAP[field] || "created_at";
+
       const sorted = [...(data ?? [])].sort((a: any, b: any) => {
-        if (sortOrder === "asc") return (a[field] ?? 0) - (b[field] ?? 0);
-        return (b[field] ?? 0) - (a[field] ?? 0);
+        const valA = a[dbField];
+        const valB = b[dbField];
+
+        if (valA == null) return 1;
+        if (valB == null) return -1;
+
+        if (sortOrder === "asc") {
+          return valA > valB ? 1 : -1;
+        } else {
+          return valA < valB ? 1 : -1;
+        }
       });
 
       const paginated = sorted.slice(offset, offset + limit);

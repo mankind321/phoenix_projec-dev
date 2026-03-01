@@ -162,6 +162,91 @@ export default function PropertyCardTable() {
     return { lat, lng };
   }, [data]);
 
+  React.useEffect(() => {
+    if (!mapRef.current) return;
+
+    const withCoords = data.filter((p) => p.latitude && p.longitude);
+
+    if (!withCoords.length) {
+      // Optional: reset to default center + zoom
+      mapRef.current.setCenter({ lat: 39.5, lng: -98.35 });
+      mapRef.current.setZoom(4);
+      return;
+    }
+
+    const bounds = new google.maps.LatLngBounds();
+
+    withCoords.forEach((p) =>
+      bounds.extend({
+        lat: p.latitude!,
+        lng: p.longitude!,
+      }),
+    );
+
+    mapRef.current.fitBounds(bounds);
+  }, [data]);
+
+  const clampZoom = (map: google.maps.Map, min = 4, max = 16) => {
+    const currentZoom = map.getZoom();
+    if (currentZoom == null) return;
+
+    if (currentZoom > max) map.setZoom(max);
+    if (currentZoom < min) map.setZoom(min);
+  };
+
+  React.useEffect(() => {
+    if (!mapRef.current) return;
+
+    const map = mapRef.current;
+
+    const withCoords = data.filter(
+      (p) => p.latitude != null && p.longitude != null,
+    );
+
+    // ------------------------------------
+    // No results → Reset
+    // ------------------------------------
+    if (!withCoords.length) {
+      map.panTo({ lat: 39.5, lng: -98.35 });
+      map.setZoom(4);
+      return;
+    }
+
+    // ------------------------------------
+    // Single marker
+    // ------------------------------------
+    if (withCoords.length === 1) {
+      map.panTo({
+        lat: withCoords[0].latitude!,
+        lng: withCoords[0].longitude!,
+      });
+
+      map.setZoom(14);
+      clampZoom(map, 4, 16);
+      return;
+    }
+
+    // ------------------------------------
+    // Multiple markers
+    // ------------------------------------
+    const bounds = new google.maps.LatLngBounds();
+
+    withCoords.forEach((p) =>
+      bounds.extend({
+        lat: p.latitude!,
+        lng: p.longitude!,
+      }),
+    );
+
+    map.panTo(bounds.getCenter()); // smooth animation
+    map.fitBounds(bounds);
+
+    // clamp after bounds animation
+    setTimeout(() => {
+      clampZoom(map, 4, 16);
+    }, 300);
+  }, [data]);
+
   // -----------------------------
   // 🔍 Fetch properties
   // -----------------------------
@@ -296,8 +381,11 @@ export default function PropertyCardTable() {
   const handleListClick = (p: Property) => {
     setSelectedProperty(p);
     if (mapRef.current && p.latitude && p.longitude) {
-      mapRef.current.panTo({ lat: p.latitude, lng: p.longitude });
-      mapRef.current.setZoom(10);
+      mapRef.current.panTo({ lat: p.latitude!, lng: p.longitude! });
+
+      setTimeout(() => {
+        mapRef.current?.setZoom(14);
+      }, 200);
     }
   };
 
@@ -606,7 +694,6 @@ export default function PropertyCardTable() {
           {isMapLoaded && (
             <GoogleMap
               mapContainerStyle={MAP_CONTAINER_STYLE}
-              center={mapCenter}
               zoom={6}
               onLoad={onMapLoad}
               options={{
@@ -615,7 +702,17 @@ export default function PropertyCardTable() {
                 fullscreenControl: true,
               }}
             >
-              <MarkerClusterer>
+              <MarkerClusterer
+                options={{
+                  gridSize: 60,
+                  minimumClusterSize: 3,
+                  zoomOnClick: true,
+                  averageCenter: true,
+                  maxZoom: 15,
+                  imagePath:
+                    "https://developers.google.com/maps/documentation/javascript/examples/markerclusterer/m",
+                }}
+              >
                 {(clusterer: any) => (
                   <>
                     {data

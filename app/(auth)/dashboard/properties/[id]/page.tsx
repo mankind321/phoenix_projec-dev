@@ -226,7 +226,6 @@ export default function PropertyViewPage({
       <InfoSection icon={<DollarSign />} title="Financial Details">
         <Grid2>
           <InfoItem label="Sale Price" value={formatUSD(property.price)} />
-          <InfoItem label="Sale Price (USD)" value={property.price_usd} />
           <InfoItem label="Cap Rate" value={property.cap_rate} />
           <InfoItem label="Sale Date" value={property.sale_date} />
         </Grid2>

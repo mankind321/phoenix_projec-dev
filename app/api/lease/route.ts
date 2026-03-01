@@ -22,7 +22,7 @@ function createRlsClient(headers: Record<string, string>) {
     {
       db: { schema: "api" },
       global: { headers },
-    }
+    },
   );
 }
 
@@ -105,7 +105,7 @@ function isAiQuery(text: string | null): boolean {
     "rent",
   ];
 
-  const hasKeyword = aiKeywords.some(k => t.includes(k));
+  const hasKeyword = aiKeywords.some((k) => t.includes(k));
 
   if (hasKeyword) {
     console.log("🤖 Intent keyword detected → AI search");
@@ -128,6 +128,18 @@ async function extractLeaseFilters(prompt: string) {
   const instruction = `
 You are a lease query parser.
 
+Rules:
+
+- If user mentions a tenant name → set "tenant"
+- If user mentions a landlord name → set "landlord"
+- If user mentions a property name → set "property_name"
+- If user mentions:
+    active → status = "active"
+    expired → status = "expired"
+    expiring → status = "expiring"
+- If user provides only a single phrase and it does not clearly match tenant or landlord,
+  treat it as "property_name".
+
 Return ONLY valid JSON:
 
 {
@@ -149,7 +161,10 @@ User query: "${prompt}"
   console.log("🧠 Gemini RAW:", text);
 
   if (text.startsWith("```")) {
-    text = text.replace(/```json/gi, "").replace(/```/g, "").trim();
+    text = text
+      .replace(/```json/gi, "")
+      .replace(/```/g, "")
+      .trim();
   }
 
   try {
@@ -180,7 +195,7 @@ export async function GET(req: Request) {
     if (!session?.user) {
       return NextResponse.json(
         { success: false, message: "Unauthorized" },
-        { status: 401 }
+        { status: 401 },
       );
     }
 
@@ -229,12 +244,9 @@ export async function GET(req: Request) {
 
     const sortField = searchParams.get("sortField") || "created_at";
 
-    const sortOrder =
-      searchParams.get("sortOrder") === "asc" ? "asc" : "desc";
+    const sortOrder = searchParams.get("sortOrder") === "asc" ? "asc" : "desc";
 
-    const field = ALLOWED_SORT_FIELDS.has(sortField)
-      ? sortField
-      : "created_at";
+    const field = ALLOWED_SORT_FIELDS.has(sortField) ? sortField : "created_at";
 
     /* ============================================================
        AI MODE
@@ -249,17 +261,22 @@ export async function GET(req: Request) {
         .from("view_lease_property_with_user")
         .select("*", { count: "exact" });
 
-      if (filters.status)
-        query = query.eq("status", filters.status);
+      if (filters.status) query = query.eq("status", filters.status);
 
-      if (filters.tenant)
-        query = query.ilike("tenant", `%${filters.tenant}%`);
+      if (filters.tenant) query = query.ilike("tenant", `%${filters.tenant}%`);
 
       if (filters.landlord)
         query = query.ilike("landlord", `%${filters.landlord}%`);
 
-      if (filters.property_name)
-        query = query.ilike("property_name", `%${filters.property_name}%`);
+      if (filters.property_name) {
+        const safe = filters.property_name.replace(/[%_]/g, "");
+
+        query = query.or(
+          `property_name.ilike.%${safe}%,` +
+            `property_address.ilike.%${safe}%,` +
+            `property_type.ilike.%${safe}%`,
+        );
+      }
 
       if (filters.lease_start_from)
         query = query.gte("lease_start", filters.lease_start_from);
@@ -309,10 +326,16 @@ export async function GET(req: Request) {
         .replace(/,/g, "")
         .replace(/\s+/g, " ");
 
+      console.log("🔎 Lease Raw Search Input:", search);
+      console.log("🔎 Lease Sanitized Search:", safe);
+
       const orFilter = [
         `tenant.ilike.%${safe}%`,
         `landlord.ilike.%${safe}%`,
         `property_name.ilike.%${safe}%`,
+        `property_address.ilike.%${safe}%`,
+        `property_landlord.ilike.%${safe}%`,
+        `property_type.ilike.%${safe}%`,
         `comments.ilike.%${safe}%`,
       ].join(",");
 
@@ -326,6 +349,12 @@ export async function GET(req: Request) {
       .range(offset, offset + limit - 1);
 
     const { data, count, error } = await query;
+
+    console.log("📊 Lease Traditional Result:", {
+      returned_rows: data?.length ?? 0,
+      total_count: count ?? 0,
+      error: error?.message ?? null,
+    });
 
     if (error)
       return NextResponse.json({
@@ -343,7 +372,6 @@ export async function GET(req: Request) {
       page,
       limit,
     });
-
   } catch (err: any) {
     console.error("🔥 Lease API Fatal Error:", err);
 
@@ -352,7 +380,7 @@ export async function GET(req: Request) {
         success: false,
         message: err.message,
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
