@@ -113,14 +113,12 @@ export default function ContactTable() {
   /* ------------------ FETCH DATA ---------------------- */
   const loadContacts = React.useCallback(
     async (signal?: AbortSignal) => {
-      if (status !== "authenticated") return;
-
       try {
         setIsLoading(true);
 
         const res = await fetch(
           `/api/contacts?page=${page}&pageSize=${pageSize}&search=${encodeURIComponent(globalFilter)}`,
-          { signal }, // 👈 IMPORTANT
+          { signal },
         );
 
         if (!res.ok) throw new Error("Failed to load contacts");
@@ -142,16 +140,18 @@ export default function ContactTable() {
         }
       }
     },
-    [status, page, pageSize, globalFilter],
+    [page, globalFilter],
   );
 
   React.useEffect(() => {
+    if (status !== "authenticated") return;
+
     const controller = new AbortController();
 
     loadContacts(controller.signal);
 
-    return () => controller.abort(); // 👈 prevents state update after unmount
-  }, [loadContacts]);
+    return () => controller.abort();
+  }, [status, page, globalFilter, loadContacts]);
 
   /* ------------------ TABLE COLUMNS ---------------------- */
   const columns = React.useMemo<ColumnDef<Contact>[]>(
