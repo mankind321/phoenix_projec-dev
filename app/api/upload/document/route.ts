@@ -5,8 +5,16 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { logAuditTrail } from "@/lib/auditLogger";
 
-const DISPATCHER_SIGNED_URL =
-  "https://upload-dispatcher-283806001440.us-west2.run.app/preupload/signed-url";
+function requireEnv(name: string): string {
+  const value = process.env[name];
+  if (!value) {
+    throw new Error(`Missing required environment variable: ${name}`);
+  }
+  return value;
+}
+
+const DISPATCHER_SIGNED_URL = requireEnv("DISPATCHER_SIGNED_URL");
+const GOOGLE_BUCKET_DOCUMENT = requireEnv("GOOGLE_BUCKET_DOCUMENT");
 const MAX_FILE_SIZE = 1024 * 1024 * 1024; // 1GB
 
 export async function POST(req: Request) {
@@ -36,12 +44,33 @@ export async function POST(req: Request) {
     const body = await req.json();
 
     const fileNameRaw = body.file_name;
-    const contentType = body.content_type || "application/octet-stream";
-
+    const contentType = body.content_type;
     const documentType = body.document_type;
-    const fileSize = Number(body.file_size) || 0;
+    const fileSizeRaw = body.file_size;
 
-    // 🚫 HARD LIMIT CHECK (1GB)
+    // Basic presence validation
+    if (
+      typeof fileNameRaw !== "string" ||
+      typeof documentType !== "string" ||
+      typeof contentType !== "string" ||
+      fileSizeRaw === undefined
+    ) {
+      return NextResponse.json(
+        { success: false, message: "Missing required upload fields" },
+        { status: 400 },
+      );
+    }
+
+    // Strict type validation
+    const fileSize = Number(fileSizeRaw);
+
+    if (!Number.isFinite(fileSize) || fileSize <= 0) {
+      return NextResponse.json(
+        { success: false, message: "Invalid file size" },
+        { status: 400 },
+      );
+    }
+
     if (fileSize > MAX_FILE_SIZE) {
       const sizeInGB = (fileSize / (1024 * 1024 * 1024)).toFixed(2);
 
@@ -50,16 +79,20 @@ export async function POST(req: Request) {
           success: false,
           message: `Upload blocked. File size is ${sizeInGB} GB. Maximum allowed size per document is 1 GB.`,
         },
-        { status: 413 }, // Payload Too Large
+        { status: 413 },
       );
     }
 
-    if (!fileNameRaw || !documentType) {
+    const ALLOWED_CONTENT_TYPES = [
+      "application/pdf",
+      "image/jpeg",
+      "image/png",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ];
+
+    if (!ALLOWED_CONTENT_TYPES.includes(contentType)) {
       return NextResponse.json(
-        {
-          success: false,
-          message: "Missing file_name or document_type",
-        },
+        { success: false, message: "Unsupported file type" },
         { status: 400 },
       );
     }
@@ -67,7 +100,7 @@ export async function POST(req: Request) {
     // ----------------------------------------------
     // 3. Normalize filename
     // ----------------------------------------------
-    const normalizedFileName = fileNameRaw.trim();
+    const normalizedFileName = fileNameRaw.trim().replace(/[^\w.\-]/g, "_");
 
     // ----------------------------------------------
     // 4. Generate upload path
@@ -82,7 +115,7 @@ export async function POST(req: Request) {
 
       file_path: filePath,
 
-      bucket_name: process.env.GOOGLE_BUCKET_DOCUMENT,
+      bucket_name: GOOGLE_BUCKET_DOCUMENT,
 
       content_type: contentType,
 
@@ -104,27 +137,57 @@ export async function POST(req: Request) {
     // ----------------------------------------------
     // 6. Call dispatcher for signed URL
     // ----------------------------------------------
-    const dispatcherRes = await fetch(DISPATCHER_SIGNED_URL, {
-      method: "POST",
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000); // 10 seconds
 
-      headers: {
-        "Content-Type": "application/json",
-      },
+    let dispatcherRes: Response;
 
-      body: JSON.stringify(metadata),
-    });
+    try {
+      dispatcherRes = await fetch(DISPATCHER_SIGNED_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(metadata),
+        signal: controller.signal,
+        cache: "no-store",
+      });
+    } catch (err: any) {
+      clearTimeout(timeout);
 
-    const dispatcherJson = await dispatcherRes.json();
+      if (err.name === "AbortError") {
+        return NextResponse.json(
+          { success: false, message: "Dispatcher request timed out" },
+          { status: 504 },
+        );
+      }
 
-    if (!dispatcherRes.ok || dispatcherJson.status !== "success") {
+      return NextResponse.json(
+        { success: false, message: "Dispatcher unreachable" },
+        { status: 502 },
+      );
+    }
+
+    clearTimeout(timeout);
+
+    let dispatcherJson: any;
+
+    try {
+      dispatcherJson = await dispatcherRes.json();
+    } catch {
+      return NextResponse.json(
+        { success: false, message: "Invalid dispatcher response" },
+        { status: 502 },
+      );
+    }
+
+    if (!dispatcherRes.ok || dispatcherJson?.status !== "success") {
       console.error("Dispatcher failed:", dispatcherJson);
 
       return NextResponse.json(
         {
           success: false,
-          message: dispatcherJson.message || "Dispatcher failed",
+          message: dispatcherJson?.message || "Dispatcher failed",
         },
-        { status: dispatcherRes.status },
+        { status: dispatcherRes.status || 500 },
       );
     }
 
