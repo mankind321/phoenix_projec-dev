@@ -122,6 +122,8 @@ export default function PropertyCardTable() {
     React.useState<Property | null>(null);
   const [newStatus, setNewStatus] = React.useState<string>("");
 
+  const [totalProperties, setTotalProperties] = React.useState<number>(0);
+
   // Dropdown options (adjust these)
   const realPropertyStatuses = [
     "Available",
@@ -161,6 +163,40 @@ export default function PropertyCardTable() {
 
     return { lat, lng };
   }, [data]);
+
+  /* ======================================================
+   FETCH TOTAL PROPERTIES (GLOBAL COUNT)
+  ====================================================== */
+  React.useEffect(() => {
+    const fetchTotalProperties = async () => {
+      try {
+        const res = await fetch("/api/properties/count", {
+          credentials: "include",
+        });
+
+        if (!res.ok) {
+          console.error("Property count API failed:", res.status);
+          setTotalProperties(0);
+          return;
+        }
+
+        const contentType = res.headers.get("content-type");
+        if (!contentType?.includes("application/json")) {
+          console.error("Property count API did not return JSON");
+          setTotalProperties(0);
+          return;
+        }
+
+        const json = await res.json();
+        setTotalProperties(json?.total ?? 0);
+      } catch (err) {
+        console.error("Failed to fetch property count:", err);
+        setTotalProperties(0);
+      }
+    };
+
+    fetchTotalProperties();
+  }, []);
 
   React.useEffect(() => {
     if (!mapRef.current) return;
@@ -564,10 +600,16 @@ export default function PropertyCardTable() {
         {/* SIDEBAR */}
         <div className="relative w-full md:w-[35%] lg:w-[32%] border-r">
           <div className="overflow-y-auto h-[calc(650px-60px)]">
-            <div className="px-4 py-2 border-b text-sm bg-gray-50">
-              {isLoading ? "Loading…" : `${total} results`}
-            </div>
+            <div className="px-4 py-2 border-b text-sm bg-gray-50 flex justify-between">
+              <span>{isLoading ? "Loading…" : `${total} results`}</span>
 
+              <span className="text-gray-600">
+                Total Properties:{" "}
+                <span className="font-semibold text-blue-700">
+                  {totalProperties.toLocaleString()}
+                </span>
+              </span>
+            </div>
             {isLoading ? (
               <div className="flex justify-center py-20">
                 <Loader2 className="animate-spin" size={28} />

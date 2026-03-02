@@ -98,8 +98,44 @@ export default function LeaseListPage() {
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const [showRecentDropdown, setShowRecentDropdown] = useState(false);
 
+  const [totalCount, setTotalCount] = useState<number>(0);
+
   const searchWrapperRef = useRef<HTMLDivElement>(null);
 
+  /* ======================================================
+   FETCH TOTAL TENANT COUNT
+  ====================================================== */
+  useEffect(() => {
+    async function fetchTotalCount() {
+      try {
+        const res = await fetch("/api/lease/count", {
+          credentials: "include", // important for NextAuth
+        });
+
+        if (!res.ok) {
+          console.error("Count API failed:", res.status);
+          setTotalCount(0);
+          return;
+        }
+
+        const contentType = res.headers.get("content-type");
+
+        if (!contentType || !contentType.includes("application/json")) {
+          console.error("Count API did not return JSON");
+          setTotalCount(0);
+          return;
+        }
+
+        const data = await res.json();
+        setTotalCount(data?.total ?? 0);
+      } catch (err) {
+        console.error("Failed to fetch total count:", err);
+        setTotalCount(0);
+      }
+    }
+
+    fetchTotalCount();
+  }, []);
   /* ======================================================
      FETCH LEASES (ONLY reacts to applied search)
   ====================================================== */
@@ -127,11 +163,13 @@ export default function LeaseListPage() {
       const res = await fetch(`/api/lease?${params.toString()}`);
       const data = await res.json();
 
-      if (data?.data) {
-        setLeases(data.data);
+      if (data) {
+        setLeases(data.data ?? []);
+        setTotalCount(data.total ?? 0);
         setTotalPages(Math.max(1, Math.ceil((data.total ?? 0) / pageSize)));
       } else {
         setLeases([]);
+        setTotalCount(0);
         setTotalPages(1);
       }
 
@@ -230,6 +268,12 @@ export default function LeaseListPage() {
             Tenant Directory
           </h2>
         </div>
+        <h3 className="text-gray-600 mt-1">
+          Total Tenants:{" "}
+          <span className="font-semibold text-blue-600">
+            {isLoading ? "Loading..." : totalCount.toLocaleString()}
+          </span>
+        </h3>
 
         <p className="text-sm text-gray-500 mb-4">
           Search tenant, property, landlord, or comments.
