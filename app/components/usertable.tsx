@@ -516,7 +516,7 @@ export default function UserTable() {
           </div>
 
           {/* Search + Clear */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 mt-2">
             <Button
               onClick={applySearch}
               className="bg-blue-600 text-white hover:bg-blue-700 flex items-center gap-2"
@@ -534,46 +534,46 @@ export default function UserTable() {
               <X className="w-4 h-4" />
               Clear
             </Button>
+
+            {/* Add User */}
+            <Button
+              className="bg-blue-600 text-white hover:bg-blue-700"
+              onClick={() => router.push("/dashboard/users/add")}
+            >
+              <Plus size={18} />
+              Add User
+            </Button>
+
+            <Button
+              variant="secondary"
+              disabled={bulkLoggingOut}
+              onClick={() => {
+                if (!table.getSelectedRowModel().rows.length) {
+                  toast.error("Please select at least one user.");
+                  return;
+                }
+                setBulkLogoutOpen(true);
+              }}
+            >
+              <LogOut size={15} />
+              Bulk Logout ({table.getSelectedRowModel().rows.length})
+            </Button>
+
+            <Button
+              variant="destructive"
+              disabled={bulkDeleting}
+              onClick={() => {
+                if (!Object.keys(rowSelection).length) {
+                  toast.error("Please select at least one user.");
+                  return;
+                }
+                setBulkDeleteOpen(true);
+              }}
+            >
+              <Trash2 size={15} />
+              Delete Selected ({table.getSelectedRowModel().rows.length})
+            </Button>
           </div>
-
-          {/* Add User */}
-          <Button
-            className="bg-blue-600 text-white hover:bg-blue-700"
-            onClick={() => router.push("/dashboard/users/add")}
-          >
-            <Plus size={18} />
-            Add User
-          </Button>
-
-          <Button
-            variant="secondary"
-            disabled={bulkLoggingOut}
-            onClick={() => {
-              if (!table.getSelectedRowModel().rows.length) {
-                toast.error("Please select at least one user.");
-                return;
-              }
-              setBulkLogoutOpen(true);
-            }}
-          >
-            <LogOut size={15} />
-            Bulk Logout ({table.getSelectedRowModel().rows.length})
-          </Button>
-
-          <Button
-            variant="destructive"
-            disabled={bulkDeleting}
-            onClick={() => {
-              if (!Object.keys(rowSelection).length) {
-                toast.error("Please select at least one user.");
-                return;
-              }
-              setBulkDeleteOpen(true);
-            }}
-          >
-            <Trash2 size={15} />
-            Delete Selected ({table.getSelectedRowModel().rows.length})
-          </Button>
         </div>
       </div>
 
