@@ -17,16 +17,26 @@ export async function POST(req: Request) {
       );
     }
 
-    // Update status to offline
-    await supabase
+    const { error } = await supabase
       .from("accounts_status")
-      .update({ account_status: "offline" })
+      .update({
+        account_status: "offline",
+        session_id: null, // 🔥 invalidates JWT on next check
+      })
       .eq("account_id", accountId)
       .eq("username", username);
 
+    if (error) {
+      console.error("Supabase update error:", error);
+      return NextResponse.json(
+        { success: false, message: "Database update failed" },
+        { status: 500 }
+      );
+    }
+
     return NextResponse.json({ success: true });
   } catch (err) {
-    console.error("Error updating status:", err);
+    console.error("Force logout error:", err);
     return NextResponse.json(
       { success: false, message: "Server error" },
       { status: 500 }

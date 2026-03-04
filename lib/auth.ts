@@ -167,6 +167,16 @@ export const authOptions: AuthOptions = {
         // ----------------------------------------
         const session_id = randomUUID();
 
+        // 🔐 Mark user online immediately
+        await supabase
+          .from("accounts_status")
+          .update({
+            account_status: "online",
+            session_id: session_id,
+          })
+          .eq("account_id", userRecord.accountid)
+          .eq("username", userRecord.username);
+
         // ----------------------------------------
         // 8️⃣ Return user object
         // ----------------------------------------
@@ -197,14 +207,43 @@ export const authOptions: AuthOptions = {
   // ----------------------------------------
   callbacks: {
     async jwt({ token, user }) {
+      // On login
       if (user) {
         token.user = user;
         token.session_id = (user as any).session_id;
+        token.invalid = false;
+        return token;
       }
+
+      // Validate only if token exists
+      if (token?.user?.accountId && token?.session_id) {
+        const { data } = await supabase
+          .from("accounts_status")
+          .select("account_status, session_id")
+          .eq("account_id", token.user.accountId)
+          .eq("username", token.user.username)
+          .maybeSingle();
+
+        if (
+          !data ||
+          data.account_status !== "online" ||
+          data.session_id !== token.session_id
+        ) {
+          token.invalid = true; // mark invalid instead of throwing
+          return token;
+        }
+      }
+
       return token;
     },
 
     async session({ session, token }) {
+      // 🔐 If JWT marked invalid → remove user
+      if ((token as any).invalid) {
+        session.user = undefined as any;
+        return session;
+      }
+
       session.user = token.user as any;
       session.session_id = token.session_id;
       return session;

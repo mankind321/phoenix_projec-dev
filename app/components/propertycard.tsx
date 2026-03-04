@@ -606,7 +606,7 @@ export default function PropertyCardTable() {
               <span className="text-gray-600">
                 Total Properties:{" "}
                 <span className="font-semibold text-blue-700">
-                  {totalProperties.toLocaleString()}
+                  {isLoading ? "Loading..." : totalProperties.toLocaleString()}
                 </span>
               </span>
             </div>
