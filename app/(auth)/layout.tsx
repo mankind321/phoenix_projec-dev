@@ -101,8 +101,11 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
         session_id: session.session_id,
       };
 
-      if (!isLoggingIn()) {
+      const wasOnline = sessionStorage.getItem("session-online");
+
+      if (!wasOnline && !isLoggingIn()) {
         sendOnline(lastUserRef.current);
+        sessionStorage.setItem("session-online", "true");
       }
     }
   }, [status, session, router, sendOnline]);
@@ -120,6 +123,15 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
     };
 
     const handleBeforeUnload = () => {
+      const navEntries = performance.getEntriesByType(
+        "navigation",
+      ) as PerformanceNavigationTiming[];
+
+      const navType = navEntries?.[0]?.type;
+
+      // Ignore browser refresh
+      if (navType === "reload") return;
+
       if (!isLoggingOut() && !isLoggingIn()) {
         sendOfflineBeacon(payload);
       }

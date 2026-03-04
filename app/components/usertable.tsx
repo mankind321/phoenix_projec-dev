@@ -435,88 +435,87 @@ export default function UserTable() {
   return (
     <div className="w-11/12 mx-auto mt-6 space-y-6">
       {/* HEADER */}
-      <div className="flex flex-col md:flex-row justify-between items-center gap-3 pb-4">
+      <div className="flex flex-col md:flex-row justify-between items-start gap-3 pb-4">
         <div>
           <div className="flex items-center gap-2">
             <Users className="w-6 h-6 text-gray-700" />
             <h2 className="text-xl font-semibold text-gray-800">User List</h2>
           </div>
-          <p className="text-sm text-gray-500">
+
+          <p className="text-sm text-gray-500 whitespace-nowrap">
             Manage and view all registered users.
           </p>
         </div>
 
         <div
           ref={searchWrapperRef}
-          className="flex items-center gap-3 w-full md:w-auto relative"
+          className="flex flex-col gap-3 w-full relative"
         >
-          {/* Search Input */}
-          <div className="relative w-full md:w-[350px]">
-            <Input
-              placeholder="Search users..."
-              value={searchInput}
-              onChange={(e) => {
-                const value = e.target.value;
+          {/* TOP ROW : Search Controls (Right Aligned) */}
+          <div className="flex justify-end items-center gap-2 w-full">
+            <div className="relative w-full max-w-[500px]">
+              <Input
+                placeholder="Search users..."
+                value={searchInput}
+                onChange={(e) => {
+                  const value = e.target.value;
 
-                setSearchInput(value);
-                setShowRecentDropdown(true);
+                  setSearchInput(value);
+                  setShowRecentDropdown(true);
 
-                // reload all users when cleared
-                if (!value.trim()) {
-                  setGlobalFilter("");
-                  setPage(1);
-                }
-              }}
-              onFocus={() => setShowRecentDropdown(true)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") applySearch();
-              }}
-              className="w-full"
-            />
+                  if (!value.trim()) {
+                    setGlobalFilter("");
+                    setPage(1);
+                  }
+                }}
+                onFocus={() => setShowRecentDropdown(true)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") applySearch();
+                }}
+                className="w-full"
+              />
 
-            {/* Recent Search Dropdown */}
-            {showRecentDropdown && recentSearches.length > 0 && (
-              <div className="absolute top-full left-0 w-full bg-white border rounded-md shadow-md z-50 mt-1 max-h-60 overflow-auto">
-                {recentSearches
-                  .filter((item) =>
-                    item.toLowerCase().includes(searchInput.toLowerCase()),
-                  )
-                  .map((item, index) => (
-                    <div
-                      key={index}
-                      className="flex items-center justify-between px-3 py-2 hover:bg-gray-100 cursor-pointer group"
-                    >
+              {/* Recent Search Dropdown */}
+              {showRecentDropdown && recentSearches.length > 0 && (
+                <div className="absolute top-full left-0 w-full bg-white border rounded-md shadow-md z-50 mt-1 max-h-60 overflow-auto">
+                  {recentSearches
+                    .filter((item) =>
+                      item.toLowerCase().includes(searchInput.toLowerCase()),
+                    )
+                    .map((item, index) => (
                       <div
-                        className="flex items-center gap-2 flex-1"
-                        onClick={() => {
-                          setSearchInput(item);
-                          saveRecentSearch(item);
-
-                          setGlobalFilter(item);
-                          setPage(1);
-
-                          setShowRecentDropdown(false);
-                        }}
+                        key={index}
+                        className="flex items-center justify-between px-3 py-2 hover:bg-gray-100 cursor-pointer group"
                       >
-                        <Clock className="w-4 h-4 text-gray-400" />
-                        {item}
+                        <div
+                          className="flex items-center gap-2 flex-1"
+                          onClick={() => {
+                            setSearchInput(item);
+                            saveRecentSearch(item);
+
+                            setGlobalFilter(item);
+                            setPage(1);
+
+                            setShowRecentDropdown(false);
+                          }}
+                        >
+                          <Clock className="w-4 h-4 text-gray-400" />
+                          {item}
+                        </div>
+
+                        <X
+                          className="w-4 h-4 text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            removeRecentSearch(item);
+                          }}
+                        />
                       </div>
+                    ))}
+                </div>
+              )}
+            </div>
 
-                      <X
-                        className="w-4 h-4 text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          removeRecentSearch(item);
-                        }}
-                      />
-                    </div>
-                  ))}
-              </div>
-            )}
-          </div>
-
-          {/* Search + Clear */}
-          <div className="flex items-center gap-2 mt-2">
             <Button
               onClick={applySearch}
               className="bg-blue-600 text-white hover:bg-blue-700 flex items-center gap-2"
@@ -534,10 +533,12 @@ export default function UserTable() {
               <X className="w-4 h-4" />
               Clear
             </Button>
+          </div>
 
-            {/* Add User */}
+          {/* SECOND ROW : Action Buttons (Right Aligned) */}
+          <div className="flex justify-end gap-2 w-full">
             <Button
-              className="bg-blue-600 text-white hover:bg-blue-700"
+              className="bg-blue-600 text-white hover:bg-blue-700 flex items-center gap-2"
               onClick={() => router.push("/dashboard/users/add")}
             >
               <Plus size={18} />
@@ -554,6 +555,7 @@ export default function UserTable() {
                 }
                 setBulkLogoutOpen(true);
               }}
+              className="flex items-center gap-2"
             >
               <LogOut size={15} />
               Bulk Logout ({table.getSelectedRowModel().rows.length})
@@ -569,6 +571,7 @@ export default function UserTable() {
                 }
                 setBulkDeleteOpen(true);
               }}
+              className="flex items-center gap-2"
             >
               <Trash2 size={15} />
               Delete Selected ({table.getSelectedRowModel().rows.length})

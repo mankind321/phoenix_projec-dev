@@ -410,7 +410,8 @@ export default function ContactTable() {
   return (
     <div className="w-11/12 mx-auto mt-6 space-y-6">
       {/* HEADER */}
-      <div className="flex flex-col md:flex-row justify-between items-center gap-3 pb-4">
+      <div className="flex flex-col md:flex-row justify-between items-start gap-3 pb-4">
+        {/* LEFT : Title */}
         <div>
           <div className="flex items-center gap-2">
             <Contact className="w-6 h-6 text-gray-700" />
@@ -418,82 +419,80 @@ export default function ContactTable() {
               Contact List
             </h2>
           </div>
-          <p className="text-sm text-gray-500">Manage broker contacts.</p>
+
+          <p className="text-sm text-gray-500 whitespace-nowrap">
+            Manage broker contacts.
+          </p>
         </div>
 
+        {/* RIGHT : Search + Actions */}
         <div
           ref={searchWrapperRef}
-          className="flex gap-3 items-center w-full md:w-auto relative"
+          className="flex flex-col gap-3 w-full md:flex-1 relative"
         >
-          {/* Search input + dropdown */}
-          <div className="relative w-full md:w-[350px]">
-            <Input
-              placeholder="Search contacts..."
-              value={searchInput}
-              onChange={(e) => {
-                const value = e.target.value;
+          {/* SEARCH ROW (aligned with H2) */}
+          <div className="flex justify-end items-center gap-2 w-full">
+            <div className="relative w-full max-w-[400px]">
+              <Input
+                placeholder="Search contacts..."
+                value={searchInput}
+                onChange={(e) => {
+                  const value = e.target.value;
 
-                setSearchInput(value);
-                setShowRecentDropdown(true);
+                  setSearchInput(value);
+                  setShowRecentDropdown(true);
 
-                // ✅ If input is cleared, reload ALL contacts immediately
-                if (!value.trim()) {
-                  setGlobalFilter("");
-                  setPage(1);
-                }
-              }}
-              onFocus={() => {
-                setShowRecentDropdown(true);
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  applySearch();
-                }
-              }}
-              className="w-full"
-            />
+                  if (!value.trim()) {
+                    setGlobalFilter("");
+                    setPage(1);
+                  }
+                }}
+                onFocus={() => setShowRecentDropdown(true)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") applySearch();
+                }}
+                className="w-full"
+              />
 
-            {/* Recent search dropdown */}
-            {showRecentDropdown && recentSearches.length > 0 && (
-              <div className="absolute top-full left-0 w-full bg-white border rounded-md shadow-md z-50 mt-1 max-h-60 overflow-auto">
-                {recentSearches
-                  .filter((item) =>
-                    item.toLowerCase().includes(searchInput.toLowerCase()),
-                  )
-                  .map((item, index) => (
-                    <div
-                      key={index}
-                      className="flex items-center justify-between px-3 py-2 hover:bg-gray-100 cursor-pointer group"
-                    >
+              {/* Recent search dropdown */}
+              {showRecentDropdown && recentSearches.length > 0 && (
+                <div className="absolute top-full left-0 w-full bg-white border rounded-md shadow-md z-50 mt-1 max-h-60 overflow-auto">
+                  {recentSearches
+                    .filter((item) =>
+                      item.toLowerCase().includes(searchInput.toLowerCase()),
+                    )
+                    .map((item, index) => (
                       <div
-                        className="flex items-center gap-2 flex-1"
-                        onClick={() => {
-                          setSearchInput(item);
-                          saveRecentSearch(item);
-                          setGlobalFilter(item);
-                          setPage(1);
-                          setShowRecentDropdown(false);
-                        }}
+                        key={index}
+                        className="flex items-center justify-between px-3 py-2 hover:bg-gray-100 cursor-pointer group"
                       >
-                        <Clock className="w-4 h-4 text-gray-400" />
-                        {item}
+                        <div
+                          className="flex items-center gap-2 flex-1"
+                          onClick={() => {
+                            setSearchInput(item);
+                            saveRecentSearch(item);
+                            setGlobalFilter(item);
+                            setPage(1);
+                            setShowRecentDropdown(false);
+                          }}
+                        >
+                          <Clock className="w-4 h-4 text-gray-400" />
+                          {item}
+                        </div>
+
+                        <X
+                          className="w-4 h-4 text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            removeRecentSearch(item);
+                          }}
+                        />
                       </div>
+                    ))}
+                </div>
+              )}
+            </div>
 
-                      <X
-                        className="w-4 h-4 text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          removeRecentSearch(item);
-                        }}
-                      />
-                    </div>
-                  ))}
-              </div>
-            )}
-          </div>
-
-          {/* Search + Clear buttons */}
-          <div className="flex items-center gap-2 mt-2">
             <Button
               onClick={applySearch}
               className="bg-blue-600 text-white hover:bg-blue-700 flex items-center gap-2"
@@ -513,34 +512,34 @@ export default function ContactTable() {
             </Button>
           </div>
 
-          {/* Add Contact button */}
-          <Button
-            className="bg-blue-600 text-white hover:bg-blue-700 mt-2"
-            onClick={() => router.push("/dashboard/contact/add")}
-          >
-            <Plus size={18} /> Add Contact
-          </Button>
-
-          {/* Delete selected button */}
-          <Can role={["Admin", "Manager"]}>
+          {/* ACTION BUTTONS ROW */}
+          <div className="flex justify-end gap-2 w-full">
             <Button
-              variant="destructive"
-              className="mt-2"
-              disabled={bulkDeleting}
-              onClick={() => {
-                if (!Object.keys(rowSelection).length) {
-                  toast.error("Please select at least one contact.");
-                  return;
-                }
-                setBulkDeleteOpen(true);
-              }}
+              className="bg-blue-600 text-white hover:bg-blue-700"
+              onClick={() => router.push("/dashboard/contact/add")}
             >
-              <Trash2 className="w-4 h-4 mr-2" />
-              {bulkDeleting
-                ? "Deleting..."
-                : `Delete Selected (${table.getSelectedRowModel().rows.length})`}
+              <Plus size={18} /> Add Contact
             </Button>
-          </Can>
+
+            <Can role={["Admin", "Manager"]}>
+              <Button
+                variant="destructive"
+                disabled={bulkDeleting}
+                onClick={() => {
+                  if (!Object.keys(rowSelection).length) {
+                    toast.error("Please select at least one contact.");
+                    return;
+                  }
+                  setBulkDeleteOpen(true);
+                }}
+              >
+                <Trash2 className="w-4 h-4 mr-2" />
+                {bulkDeleting
+                  ? "Deleting..."
+                  : `Delete Selected (${table.getSelectedRowModel().rows.length})`}
+              </Button>
+            </Can>
+          </div>
         </div>
       </div>
 
