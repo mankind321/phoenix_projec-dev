@@ -191,6 +191,8 @@ export function useRealtimeTest(
                 );
 
                 options?.onExtractionFailed?.();
+
+                window.dispatchEvent(new Event("error-document-added"));
               }
             },
           )

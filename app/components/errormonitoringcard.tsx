@@ -235,6 +235,18 @@ export default function ErrorMonitoringTable({
     loadRecords();
   }, [loadRecords]);
 
+  React.useEffect(() => {
+    const handler = () => {
+      loadRecords();
+    };
+
+    window.addEventListener("error-document-added", handler);
+
+    return () => {
+      window.removeEventListener("error-document-added", handler);
+    };
+  }, [loadRecords]);
+
   /* ------------------ COLUMNS ---------------------- */
 
   const columns = React.useMemo<ColumnDef<ErrorMonitoringRecord>[]>(

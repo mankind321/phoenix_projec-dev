@@ -105,7 +105,7 @@ export default function DocumentUploadSection() {
 
     // OM / SITE PLAN / BROCHURE → REVIEW PAGE
     onReviewReady: () => {
-      fetchErrorCount();
+      fetchDocumentCount();
     },
 
     // FAILED → ERROR LIST
@@ -135,6 +135,18 @@ export default function DocumentUploadSection() {
       window.removeEventListener("document-list-updated", handler);
     };
   }, [fetchDocumentCount]);
+
+  useEffect(() => {
+    const handler = () => {
+      fetchErrorCount();
+    };
+
+    window.addEventListener("error-document-added", handler);
+
+    return () => {
+      window.removeEventListener("error-document-added", handler);
+    };
+  }, [fetchErrorCount]);
 
   // ------------------------------
   // FILE HANDLING
