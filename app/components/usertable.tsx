@@ -518,7 +518,7 @@ export default function UserTable() {
 
             <Button
               onClick={applySearch}
-              className="bg-blue-600 text-white hover:bg-blue-700 flex items-center gap-2"
+              className="bg-blue-600 text-white hover:bg-blue-700 flex items-center gap-2 mt-2"
             >
               <SearchIcon className="w-4 h-4" />
               Search
@@ -528,7 +528,7 @@ export default function UserTable() {
               variant="outline"
               onClick={clearSearch}
               disabled={!searchInput && !globalFilter}
-              className="flex items-center gap-2 bg-red-500 text-white hover:bg-red-700 hover:text-white"
+              className="flex items-center gap-2 bg-red-500 text-white hover:bg-red-700 hover:text-white mt-2"
             >
               <X className="w-4 h-4" />
               Clear
