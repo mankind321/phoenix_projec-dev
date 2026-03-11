@@ -29,6 +29,8 @@ import {
   MapPinned,
   Users,
   Download,
+  View,
+  Eye,
 } from "lucide-react";
 
 interface PropertyData {
@@ -235,7 +237,7 @@ export default function PropertyViewPage({
       <InfoSection icon={<Users />} title="Tenant">
         <Tabs defaultValue="active" className="w-full">
           <TabsList className="mb-4">
-            <TabsTrigger value="active">Active Leases</TabsTrigger>
+            <TabsTrigger value="active">Leases</TabsTrigger>
             <TabsTrigger value="expired">Expired Leases</TabsTrigger>
           </TabsList>
 
@@ -249,24 +251,39 @@ export default function PropertyViewPage({
                   <TableRow>
                     <TableHead>Tenant</TableHead>
                     <TableHead>Unit</TableHead>
-                    <TableHead>Landload</TableHead>
+                    <TableHead>Landlord</TableHead>
+                    <TableHead>Status</TableHead>
                     <TableHead>Start Date</TableHead>
                     <TableHead>End Date</TableHead>
                     <TableHead>Annual Rent</TableHead>
                     <TableHead>Price</TableHead>
+                    <TableHead className="text-center">Action</TableHead>
                   </TableRow>
                 </TableHeader>
 
                 <TableBody>
                   {leases.active.map((lease) => (
                     <TableRow key={lease.lease_id}>
-                      <TableCell>{lease.tenant}</TableCell>
-                      <TableCell>{lease.suite_unit}</TableCell>
-                      <TableCell>{lease.landlord}</TableCell>
-                      <TableCell>{lease.lease_start}</TableCell>
-                      <TableCell>{lease.lease_end}</TableCell>
-                      <TableCell>{formatUSD(lease.annual_rent)}</TableCell>
-                      <TableCell>{formatUSD(lease.price)}</TableCell>
+                      <TableCell>{lease.tenant ?? "-"}</TableCell>
+                      <TableCell>{lease.suite_unit ?? "-"}</TableCell>
+                      <TableCell>{lease.landlord ?? "-"}</TableCell>
+                      <TableCell>{lease.status ?? "-"}</TableCell>
+                      <TableCell>{lease.lease_start ?? "-"}</TableCell>
+                      <TableCell>{lease.lease_end ?? "-"}</TableCell>
+                      <TableCell>{formatUSD(lease.annual_rent) ?? "-"}</TableCell>
+                      <TableCell>{formatUSD(lease.price) ?? "-"}</TableCell>
+                      <TableCell className="text-center">
+                        <Button
+                          size="sm"
+                          onClick={() =>
+                            router.push(`/dashboard/leases/${lease.lease_id}`)
+                          }
+                          className="bg-blue-600 hover:bg-blue-700 text-white"
+                        >
+                          <Eye size={16}/>
+                          View
+                        </Button>
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -284,24 +301,39 @@ export default function PropertyViewPage({
                   <TableRow>
                     <TableHead>Tenant</TableHead>
                     <TableHead>Unit</TableHead>
+                    <TableHead>Landlord</TableHead>
+                    <TableHead>Status</TableHead>
                     <TableHead>Start Date</TableHead>
                     <TableHead>End Date</TableHead>
                     <TableHead>Annual Rent</TableHead>
                     <TableHead>Price</TableHead>
-                    <TableHead>Status</TableHead>
+                    <TableHead className="text-center">Action</TableHead>
                   </TableRow>
                 </TableHeader>
 
                 <TableBody>
                   {leases.expired.map((lease) => (
                     <TableRow key={lease.lease_id}>
-                      <TableCell>{lease.tenant}</TableCell>
-                      <TableCell>{lease.suite_unit}</TableCell>
-                      <TableCell>{lease.lease_start}</TableCell>
-                      <TableCell>{lease.lease_end}</TableCell>
-                      <TableCell>{formatUSD(lease.annual_rent)}</TableCell>
-                      <TableCell>{formatUSD(lease.price)}</TableCell>
-                      <TableCell>{lease.status}</TableCell>
+                      <TableCell>{lease.tenant ?? "-"}</TableCell>
+                      <TableCell>{lease.suite_unit ?? "-"}</TableCell>
+                      <TableCell>{lease.landlord ?? "-"}</TableCell>
+                      <TableCell>{lease.status ?? "-"}</TableCell>
+                      <TableCell>{lease.lease_start ?? "-"}</TableCell>
+                      <TableCell>{lease.lease_end ?? "-"}</TableCell>
+                      <TableCell>{formatUSD(lease.annual_rent) ?? "-"}</TableCell>
+                      <TableCell>{formatUSD(lease.price) ?? "-"}</TableCell>
+                      <TableCell className="text-center">
+                        <Button
+                          size="sm"
+                          onClick={() =>
+                            router.push(`/dashboard/leases/${lease.lease_id}`)
+                          }
+                          className="bg-blue-600 hover:bg-blue-700 text-white"
+                        >
+                          <Eye size={16}/>
+                          View
+                        </Button>
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

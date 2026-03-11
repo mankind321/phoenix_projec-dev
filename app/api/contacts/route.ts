@@ -86,6 +86,8 @@ export async function GET(req: Request) {
         phone,
         email,
         website,
+        property_name,
+        tenant,
         comments,
         created_by,
         createdbyuser,
@@ -102,7 +104,7 @@ export async function GET(req: Request) {
     // Search filter
     if (search) {
       query = query.or(
-        `broker_name.ilike.%${search}%,listing_company.ilike.%${search}%,email.ilike.%${search}%,phone.ilike.%${search}%`,
+        `broker_name.ilike.%${search}%,listing_company.ilike.%${search}%,email.ilike.%${search}%,phone.ilike.%${search}%,property_name.ilike.%${search}%`,
       );
     }
 

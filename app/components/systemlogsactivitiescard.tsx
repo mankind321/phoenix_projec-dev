@@ -190,11 +190,6 @@ export default function AuditTrailDashboard() {
       const res = await fetch(`/api/audit-trail?${params.toString()}`);
       const data = await res.json();
 
-      console.log("🔥 API Response /api/audit-trail:", data);
-      console.log("🔥 Logs:", data.logs);
-      console.log("🔥 Pagination:", data.pagination);
-      console.log("🔥 User Filter:", userFilter);
-
       if (data.success) {
         setLogs(data.logs || []);
         setTotalPages(data.pagination.totalPages || 1);
@@ -261,6 +256,7 @@ export default function AuditTrailDashboard() {
                   <SelectItem value="all">All Actions</SelectItem>
                   <SelectItem value="CREATE">Create</SelectItem>
                   <SelectItem value="UPDATE">Update</SelectItem>
+                  <SelectItem value="UPLOAD">Upload</SelectItem>
                   <SelectItem value="DELETE">Delete</SelectItem>
                   <SelectItem value="VIEW">View</SelectItem>
                   <SelectItem value="LOGIN">Login</SelectItem>

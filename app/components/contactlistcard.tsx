@@ -68,6 +68,9 @@ interface Contact {
   website: string;
   comments: string;
 
+  property_name: string;
+  tenant: string;
+
   created_by: string;
   createdbyuser: string | null;
 
@@ -189,6 +192,7 @@ export default function ContactTable() {
           headerClassName: "px-2",
         },
       },
+
       {
         id: "icon",
         header: "",
@@ -215,24 +219,28 @@ export default function ContactTable() {
           </Button>
         ),
         size: 200,
+        cell: ({ getValue }) => getValue<string>() || "-",
       },
 
       {
         accessorKey: "listing_company",
         header: "Listing Company",
-        size: 200,
+        size: 300,
+        cell: ({ getValue }) => getValue<string>() || "-",
       },
 
       {
         accessorKey: "phone",
         header: "Phone",
         size: 150,
+        cell: ({ getValue }) => getValue<string>() || "-",
       },
 
       {
         accessorKey: "email",
         header: "Email",
         size: 220,
+        cell: ({ getValue }) => getValue<string>() || "-",
       },
 
       {
@@ -249,8 +257,19 @@ export default function ContactTable() {
               {row.original.website}
             </a>
           ) : (
-            <span className="text-gray-400">—</span>
+            <span className="text-gray-400">-</span>
           ),
+      },
+
+      {
+        id: "property_tenant",
+        header: "Property / Tenant",
+        size: 220,
+        accessorFn: (row) =>
+          row.property_name && row.tenant
+            ? `${row.property_name} / ${row.tenant}`
+            : row.property_name || row.tenant || "-",
+        cell: ({ getValue }) => getValue<string>() || "-",
       },
 
       {

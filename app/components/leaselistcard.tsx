@@ -425,8 +425,14 @@ export default function LeaseListPage() {
                     </div>
 
                     <div className="text-right space-y-2">
-                      <span className="text-xs px-2 py-1 rounded-full bg-green-200">
-                        {lease.status}
+                      <span
+                        className={`text-xs px-2 py-1 rounded-full ${
+                          lease.status === "Expired"
+                            ? "bg-red-200 text-red-800"
+                            : "bg-green-200 text-green-800"
+                        }`}
+                      >
+                        {lease.status || "-"}
                       </span>
 
                       <div className="font-semibold text-gray-800">

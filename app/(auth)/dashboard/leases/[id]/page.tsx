@@ -245,7 +245,11 @@ export default function LeaseViewPage({
 
   // ---------------- GUARDS ----------------
   if (loading)
-    return <p className="text-center mt-10 text-gray-600">Loading Tenant Information..</p>;
+    return (
+      <p className="text-center mt-10 text-gray-600">
+        Loading Tenant Information..
+      </p>
+    );
 
   if (!data)
     return (
@@ -256,7 +260,9 @@ export default function LeaseViewPage({
 
   if (!draftLease)
     return (
-      <p className="text-center mt-10 text-gray-600">Preparing Lease Information data…</p>
+      <p className="text-center mt-10 text-gray-600">
+        Preparing Lease Information data…
+      </p>
     );
 
   const { lease, contacts } = data;
@@ -322,6 +328,29 @@ export default function LeaseViewPage({
             editable={isEditing}
             onChange={(v) => setDraftLease({ ...draftLease, suite_unit: v })}
           />
+          {/* STATUS */}
+          <div className="space-y-1">
+            <Label className="text-gray-700 font-medium">Status</Label>
+
+            {isEditing ? (
+              <select
+                value={draftLease.status || ""}
+                onChange={(e) =>
+                  setDraftLease({ ...draftLease, status: e.target.value })
+                }
+                className="w-full border rounded-md px-3 py-2 text-sm"
+              >
+                <option value="">Select Status</option>
+                <option value="Available">Available</option>
+                <option value="Occupied">Occupied</option>
+                <option value="Expired">Expired</option>
+              </select>
+            ) : (
+              <p className="border rounded-md bg-gray-50 px-3 py-2 text-sm">
+                {lease.status || "—"}
+              </p>
+            )}
+          </div>
         </Grid2>
       </InfoSection>
 
@@ -510,12 +539,6 @@ export default function LeaseViewPage({
         ) : (
           <p className="text-gray-500">No files uploaded.</p>
         )}
-        <InfoItem
-          label="status"
-          value={draftLease.status}
-          editable={false}
-          hidden={true}
-        />
       </InfoSection>
 
       {/* AUDIT INFO */}
