@@ -125,7 +125,7 @@ async function extractLeaseFilters(prompt: string) {
 
   const model = genAI.getGenerativeModel({ model: MODEL });
 
-const instruction = `
+  const instruction = `
 You are a lease query parser.
 
 Your task is to extract lease search filters from a user's natural language query.
@@ -500,15 +500,24 @@ export async function GET(req: Request) {
       console.log("🔎 Lease Raw Search Input:", search);
       console.log("🔎 Lease Sanitized Search:", safe);
 
-      const orFilter = [
-        `tenant.ilike.%${safe}%`,
-        `landlord.ilike.%${safe}%`,
-        `property_name.ilike.%${safe}%`,
-        `property_address.ilike.%${safe}%`,
-        `property_landlord.ilike.%${safe}%`,
-        `property_type.ilike.%${safe}%`,
-        `comments.ilike.%${safe}%`,
-      ].join(",");
+      // tokenize search words
+      const tokens = [...new Set(safe.split(" ").filter((t) => t.length > 2))];
+
+      console.log("🔎 Lease Search Tokens:", tokens);
+
+      const conditions: string[] = [];
+
+      for (const token of tokens) {
+        conditions.push(`tenant.ilike.%${token}%`);
+        conditions.push(`landlord.ilike.%${token}%`);
+        conditions.push(`property_name.ilike.%${token}%`);
+        conditions.push(`property_address.ilike.%${token}%`);
+        conditions.push(`property_landlord.ilike.%${token}%`);
+        conditions.push(`property_type.ilike.%${token}%`);
+        conditions.push(`comments.ilike.%${token}%`);
+      }
+
+      const orFilter = conditions.join(",");
 
       console.log("🔍 Lease Traditional filter:", orFilter);
 
