@@ -125,31 +125,202 @@ async function extractLeaseFilters(prompt: string) {
 
   const model = genAI.getGenerativeModel({ model: MODEL });
 
-  const instruction = `
+const instruction = `
 You are a lease query parser.
 
-Rules:
+Your task is to extract lease search filters from a user's natural language query.
 
-- If user mentions a tenant name → set "tenant"
-- If user mentions a landlord name → set "landlord"
-- If user mentions a property name → set "property_name"
-- If user mentions:
-    active → status = "active"
-    expired → status = "expired"
-    expiring → status = "expiring"
-- If user provides only a single phrase and it does not clearly match tenant or landlord,
-  treat it as "property_name".
+--------------------------------------------------
+Entity Extraction
+--------------------------------------------------
 
-Return ONLY valid JSON:
+- If the user mentions a tenant name → set "tenant"
+- If the user mentions a landlord name → set "landlord"
+- If the user mentions a property name → set "property_name"
+
+--------------------------------------------------
+Status Extraction
+--------------------------------------------------
+
+Map user words to the correct lease status.
+
+IMPORTANT:
+All status values MUST use **capitalized format** (first letter uppercase).
+
+Valid statuses are:
+- "Occupied"
+- "Available"
+- "Expired"
+
+--------------------------------------------------
+
+Expired status:
+If the user mentions words like:
+
+expired  
+ended  
+finished  
+terminated  
+lapsed  
+past due  
+already ended  
+already finished  
+no longer active  
+
+→ status = "Expired"
+
+--------------------------------------------------
+
+Active / Expiring leases:
+
+If the user mentions words like:
+
+active  
+expiring  
+ending  
+ending soon  
+ongoing  
+current  
+running  
+still active  
+
+→ status = "Occupied"
+
+Meaning:
+- "expiring" means the lease is still active but ending soon.
+- Therefore expiring leases should use status = "Occupied".
+
+--------------------------------------------------
+
+Available / Vacant leases:
+
+If the user mentions words like:
+
+available  
+vacant  
+open  
+unoccupied  
+free  
+
+→ status = "Available"
+
+--------------------------------------------------
+Expiration Language Rule
+--------------------------------------------------
+
+If the user says phrases like:
+
+- "expires in X years"
+- "expires in X months"
+- "expiring in X years"
+- "expiring in X months"
+- "ending in X years"
+- "ending in X months"
+
+Then:
+
+status = "Occupied"
+
+And calculate:
+
+lease_end_to = current date + duration
+
+--------------------------------------------------
+Date Interpretation Rules
+--------------------------------------------------
+
+1. Relative Time
+
+If the user mentions:
+
+- "in X years"
+- "in X months"
+- "within X years"
+- "within X months"
+
+Convert to a real date relative to the current date.
+
+Examples:
+
+"expires in 5 years"  
+→ lease_end_to = current date + 5 years
+
+"expiring in 3 months"  
+→ lease_end_to = current date + 3 months
+
+--------------------------------------------------
+
+2. Specific Year
+
+Example:
+"leases expiring in 2028"
+
+Set:
+
+status = "Occupied"  
+lease_end_to = "2028-12-31"
+
+--------------------------------------------------
+
+3. Specific Month and Year
+
+Example:
+"leases expiring June 2027"
+
+Set:
+
+status = "Occupied"  
+lease_end_to = last day of that month
+
+Example result:
+
+"2027-06-30"
+
+--------------------------------------------------
+
+4. Date Range
+
+Example:
+"leases from 2024 to 2026"
+
+Set:
+
+lease_start_from = "2024-01-01"  
+lease_end_to = "2026-12-31"
+
+--------------------------------------------------
+Single Phrase Rule
+--------------------------------------------------
+
+If the user provides only a single phrase and it does not clearly match tenant or landlord,
+treat it as "property_name".
+
+--------------------------------------------------
+Date Format
+--------------------------------------------------
+
+All dates must be returned in ISO format:
+
+YYYY-MM-DD
+
+--------------------------------------------------
+Output Format
+--------------------------------------------------
+
+Return ONLY valid JSON.
 
 {
   "tenant": string | null,
   "landlord": string | null,
   "property_name": string | null,
-  "status": "active" | "expired" | "expiring" | null,
+  "status": "Occupied" | "Available" | "Expired" | null,
   "lease_start_from": string | null,
   "lease_end_to": string | null
 }
+
+--------------------------------------------------
+
+Current date: ${new Date().toISOString().split("T")[0]}
 
 User query: "${prompt}"
 `;
