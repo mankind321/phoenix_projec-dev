@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
 import dns from "dns";
 dns.setDefaultResultOrder("ipv4first");
 
@@ -25,6 +24,11 @@ function createRlsClient(headers: Record<string, string>) {
       global: { headers },
     },
   );
+}
+
+function normalizeStateValue(val: string) {
+  const key = val.toLowerCase().trim();
+  return US_STATES[key] || val.toUpperCase();
 }
 
 // ----------------------------------------------
@@ -106,6 +110,309 @@ function isAiQuery(text: string | null): boolean {
 
   console.log("📄 No AI intent detected → Traditional search");
   return false;
+}
+
+// ----------------------------------------------
+// 🧠 DSL EXTRACTOR (REPLACES extractParams)
+// ----------------------------------------------
+async function extractDSL(prompt: string) {
+  console.log("🧠 extractDSL prompt:", prompt);
+
+  const model = genAI.getGenerativeModel({ model: MODEL });
+
+  const instruction = `
+Convert user query into JSON DSL.
+
+Operators:
+=, !=, in, not_in
+
+Rules:
+- "TX and NC" → state IN ["TX","NC"]
+- "outside TX and NC" → state NOT IN ["TX","NC"]
+- "not in Charlotte" → city != Charlotte
+- "not on Main Street" → address != "Main Street"
+
+PRICE RULES:
+
+- "above 5M" → field="price", op=">", value=5000000
+- "below 2M" → field="price", op="<", value=2000000
+- "between 1M and 3M" → 
+    field="price", op="between", value=[1000000,3000000]
+
+Normalize:
+- k = 1,000
+- m = 1,000,000
+- b = 1,000,000,000
+
+CAP RATE RULES:
+
+- If user mentions "%" or "cap rate", interpret as cap_rate
+
+Examples:
+
+- "above 6% cap rate"
+  → { field: "cap_rate", op: ">", value: 6 }
+
+- "below 5% cap"
+  → { field: "cap_rate", op: "<", value: 5 }
+
+- "between 5% and 7%"
+  → { field: "cap_rate", op: "between", value: [5,7] }
+
+IMPORTANT:
+- Remove "%" symbol
+- Keep numeric value (6%, 7.5% → 6, 7.5)
+- Do NOT convert to decimal
+
+SORT RULES:
+
+If user mentions sorting, extract into "sort":
+
+Examples:
+
+- "sorted by price"
+  → { "field": "price", "direction": "asc" }
+
+- "sort by price descending"
+  → { "field": "price", "direction": "desc" }
+
+- "highest price"
+  → { "field": "price", "direction": "desc" }
+
+- "lowest price"
+  → { "field": "price", "direction": "asc" }
+
+- "best cap rate"
+  → { "field": "cap_rate", "direction": "desc" }
+
+- "latest"
+  → { "field": "created_at", "direction": "desc" }
+
+  LIMIT RULES:
+
+If user intent is singular:
+
+- "highest property"
+- "cheapest property"
+- "best property"
+- "top property"
+- "most expensive property"
+
+→ set:
+  "limit": 1
+
+If plural (properties), keep default (20)
+
+Return:
+{
+  "geo": {
+    "location_text": string | null,
+    "radius_m": number | null
+  },
+  "filters": [
+    {
+      "field": "state" | "city" | "address" | "type" | "price",
+      "op": "=" | "!=" | "in" | "not_in",
+      "value": string | number | string[]
+    }
+  ],
+  "sort": null,
+  "limit": 20,
+  "offset": 0
+}
+
+User: "${prompt}"
+`;
+
+  const result = await model.generateContent(instruction);
+
+  const raw = result.response.text();
+  console.log("🧠 RAW DSL:", raw);
+
+  const text = raw.replace(/```json|```/g, "").trim();
+
+  try {
+    const parsed = JSON.parse(text);
+    console.log("✅ Parsed DSL:", parsed);
+    return parsed;
+  } catch {
+    console.error("❌ DSL parse failed");
+    return null;
+  }
+}
+
+// ----------------------------------------------
+// 🔁 DSL → RPC MAPPER
+// ----------------------------------------------
+async function mapDSLToRPC(dsl: any) {
+  console.log("🔁 Mapping DSL:", dsl);
+
+  let lat = null;
+  let lng = null;
+
+  const params: any = {
+    p_lat: null,
+    p_lng: null,
+    p_radius_m: null,
+
+    p_type: null,
+    p_city: null,
+    p_state: null,
+
+    p_state_in: null,
+    p_state_not_in: null,
+
+    p_exclude_city: null,
+    p_exclude_address: null,
+    p_exclude_type: null,
+
+    p_min_price: null,
+    p_max_price: null,
+
+    p_min_cap_rate: null,
+    p_max_cap_rate: null, // ✅ ADD THIS
+
+    p_address: null,
+    p_exclude_city_in: null,
+  };
+
+  if (dsl.geo?.location_text) {
+    const location = dsl.geo.location_text;
+
+    if (dsl.geo.radius_m) {
+      const geo = await geocodeLocation(location);
+      if (geo) {
+        lat = geo.lat;
+        lng = geo.lng;
+      }
+    }
+
+    // ----------------------------------
+    // CASE 2: ADMIN SEARCH (CITY/STATE)
+    // ----------------------------------
+    else {
+      console.log("🏙️ Treating location as admin filter:", location);
+
+      const normalized = location.toLowerCase();
+
+      // check if it's a state
+      const stateCode = US_STATES[normalized];
+
+      if (stateCode) {
+        // ✅ Only apply if filters did NOT already define state
+        if (!params.p_state && !params.p_state_in && !params.p_state_not_in) {
+          params.p_state = stateCode;
+        }
+      } else {
+        // assume CITY — also protect against overrides
+        if (
+          !params.p_city &&
+          !params.p_exclude_city &&
+          !params.p_exclude_city_in
+        ) {
+          params.p_city = location;
+        }
+      }
+    }
+  }
+
+  params.p_lat = lat;
+  params.p_lng = lng;
+
+  params.p_radius_m =
+    typeof dsl.geo?.radius_m === "number" ? Math.round(dsl.geo.radius_m) : null;
+
+  for (const f of dsl.filters || []) {
+    const { field, op, value } = f;
+
+    // ✅ ADD HERE (very important)
+    if (!["=", "!=", "in", "not_in", ">", "<", "between"].includes(op)) {
+      console.warn("⚠️ Unsupported operator:", op);
+      continue;
+    }
+
+    console.log("➡️ Processing filter:", f);
+
+    if (field === "state") {
+      const normalize = (v: string) => normalizeStateValue(v);
+
+      if (op === "=") {
+        params.p_state = normalize(value);
+        params.p_state_in = null; // 🚨 prevent conflict
+      }
+
+      if (op === "!=") {
+        params.p_state_not_in = [normalize(value)];
+      }
+
+      if (op === "in") {
+        params.p_state = null; // 🚨 prevent conflict
+        params.p_state_in = value.map(normalize);
+      }
+
+      if (op === "not_in") {
+        params.p_state_not_in = value.map(normalize);
+      }
+    }
+
+    if (field === "city") {
+      if (op === "=") params.p_city = value;
+
+      if (op === "!=") {
+        params.p_exclude_city = String(value).toLowerCase();
+      }
+
+      if (op === "not_in") {
+        params.p_exclude_city_in = Array.isArray(value)
+          ? value.map((v: string) => v.toLowerCase())
+          : [String(value).toLowerCase()];
+      }
+    }
+
+    if (field === "address") {
+      if (op === "=") {
+        params.p_address = value; // ✅ NEW
+      }
+      if (op === "!=") {
+        params.p_exclude_address = value;
+      }
+    }
+
+    if (field === "type") {
+      if (op === "=") params.p_type = value;
+      if (op === "!=") params.p_exclude_type = value;
+    }
+
+    if (field === "price") {
+      if (op === ">") {
+        params.p_min_price = value;
+      }
+      if (op === "<") {
+        params.p_max_price = value;
+      }
+      if (op === "between") {
+        params.p_min_price = value[0];
+        params.p_max_price = value[1];
+      }
+    }
+
+    if (field === "cap_rate") {
+      if (op === ">") {
+        params.p_min_cap_rate = value;
+      }
+      if (op === "<") {
+        params.p_max_cap_rate = value;
+      }
+      if (op === "between") {
+        params.p_min_cap_rate = value[0];
+        params.p_max_cap_rate = value[1];
+      }
+    }
+  }
+
+  console.log("📦 Final RPC Params:", params);
+
+  return params;
 }
 // ----------------------------------------------
 // ☁️ Google Cloud Storage
@@ -211,460 +518,6 @@ const US_STATES: Record<string, string> = {
 };
 
 // -------------------------------------------------
-// AMBIGUOUS ADMIN LOCATIONS (STATE = CITY NAME)
-// -------------------------------------------------
-const AMBIGUOUS_ADMIN_LOCATIONS = new Set([
-  "new york",
-  "washington",
-  "oklahoma",
-  "kansas",
-  "missouri",
-  "nebraska",
-  "indiana",
-  "iowa",
-  "texas",
-  "georgia",
-  "florida",
-  "colorado",
-  "arizona",
-  "utah",
-  "nevada",
-  "montana",
-  "wyoming",
-  "delaware",
-  "maryland",
-  "virginia",
-  "california",
-  "louisiana",
-  "minnesota",
-  "mississippi",
-  "arkansas",
-  "tennessee",
-  "alabama",
-  "alaska",
-  "idaho",
-  "maine",
-  "vermont",
-  "oregon",
-  "hawaii",
-  "illinois",
-  "michigan",
-  "ohio",
-  "pennsylvania",
-  "wisconsin",
-  "south carolina",
-  "north carolina",
-  "south dakota",
-  "north dakota",
-  "west virginia",
-  "new jersey",
-  "new mexico",
-  "new hampshire",
-  "massachusetts",
-  "connecticut",
-  "rhode island",
-  "kentucky",
-]);
-
-// -------------------------------------------------
-// AI PARAM EXTRACTOR
-// -------------------------------------------------
-async function extractParams(prompt: string) {
-  console.log("🧠 extractParams() called with:", prompt);
-
-  const model = genAI.getGenerativeModel({ model: MODEL });
-  const instruction = `
-You are an expert real-estate spatial and financial query parser.
-
-Extract the user's intent and convert it into structured JSON.
-
-IMPORTANT RULES:
-
---------------------------------------------------
-1. GEO-SPATIAL RADIUS SEARCH RULE
---------------------------------------------------
-
-If the user specifies a radius or distance such as:
-- within X km
-- within X miles
-- near
-- nearby
-- around
-- within X meters
-
-Then the mentioned place becomes a GEO-SPATIAL CENTER POINT.
-
-In this case:
-- Extract the place into "location_text"
-- Convert distance into meters → "radius_m"
-- DO NOT treat the place as administrative filters
-- Set:
-    "city" = null
-    "state" = null
-    "origin_lat" = null
-    "origin_lng" = null
-
---------------------------------------------------
-2. EXACT OR PARTIAL STREET ADDRESS RULE
---------------------------------------------------
-
-If the user enters:
-- A numeric street address (e.g. "351 Quarry Rd")
-- A street name (e.g. "Quarry Road")
-- A building address
-- A specific road, street, avenue, boulevard, drive, lane
-
-Then treat it as an ADDRESS SEARCH.
-
-In this case:
-- Set "location_text" = full address phrase
-- Set:
-    "city" = null
-    "state" = null
-    "radius_m" = null
-
-Do NOT treat street-level addresses as city or state.
-
---------------------------------------------------
-3. ADMINISTRATIVE LOCATION RULE
---------------------------------------------------
-
-If the user mentions a location WITHOUT radius words
-and it is NOT a street-level address:
-
-Treat it as an administrative location search.
-
-Use the following logic:
-
-A. If the location matches a known state name
-   (e.g. Texas, California, Florida, New York),
-   → Set "state"
-   → Set "city" = null
-
-B. If the location is a 2-letter state abbreviation
-   (e.g. TX, CA, NY),
-   → Set "state"
-   → Set "city" = null
-
-C. If the location contains a comma
-   Example: "Charlotte, NC"
-   → Left side = city
-   → Right side = state
-
-D. If the location is a multi-word proper noun
-   and does NOT match a known state,
-   → Treat it as a CITY.
-
-   Examples:
-   - "Cagayan de Oro"
-   - "Los Angeles"
-   - "San Francisco"
-   - "Davao"
-   - "Cebu"
-   - "Taguig"
-
-   → Set "city" = full phrase
-   → Set "state" = null
-
-E. If unsure and the location is not in the state list,
-   default to CITY.
-
-Only default to STATE if it clearly matches a known state.
-
---------------------------------------------------
-4. DISTANCE NORMALIZATION RULE
---------------------------------------------------
-
-Always convert:
-- miles → meters
-- kilometers → meters
-
---------------------------------------------------
-5. PROPERTY TYPE RULE
---------------------------------------------------
-
-If the user mentions a property type
-(e.g. Fast Food, Warehouse, Office, Retail, Industrial),
-extract it EXACTLY as written.
-
---------------------------------------------------
-6. STATUS RULE
---------------------------------------------------
-
-Map user status terms to these exact values:
-
-Available
-Leased
-Sold
-Pending
-Off Market
-Occupied
-Under Maintenance
-Not Available
-
---------------------------------------------------
-7. PRICE PARSING RULE
---------------------------------------------------
-
-Extract price constraints into:
-
-- "min_price"
-- "max_price"
-
-A. GREATER THAN / OVER / MORE THAN / ABOVE
-Examples:
-- "more than 2m"
-- "over 3 million"
-- "above 750k"
-
-→ Set:
-    min_price = parsed amount
-    max_price = null
-
-B. LESS THAN / BELOW / UNDER
-Examples:
-- "below 2m"
-- "under 5 million"
-- "less than 750k"
-
-→ Set:
-    min_price = null
-    max_price = parsed amount
-
-C. BETWEEN RANGE
-Examples:
-- "between 1m and 3m"
-- "1 million to 2 million"
-- "from 500k to 1.5m"
-
-→ Set:
-    min_price = lower value
-    max_price = higher value
-
-D. EXACT PRICE
-Example:
-- "2 million property"
-
-→ Set:
-    min_price = value
-    max_price = value
-
---------------------------------------------------
-8. PRICE NORMALIZATION RULE
---------------------------------------------------
-
-Normalize numeric expressions:
-
-- k → multiply by 1,000
-  Example: 750k → 750000
-
-- m or million → multiply by 1,000,000
-  Example: 2m → 2000000
-
-- b or billion → multiply by 1,000,000,000
-
-Always return numeric values (not strings).
-
---------------------------------------------------
-9. CAP RATE PARSING RULE
---------------------------------------------------
-
-Extract cap rate constraints into:
-
-- "min_cap_rate"
-- "max_cap_rate"
-
-If a number is followed by "%" or the word "percent",
-it refers to CAP RATE — NOT price.
-
-A. GREATER THAN / ABOVE / OVER
-Examples:
-- "cap rate above 5%"
-- "more than 6 cap"
-- "over 7.5 percent"
-
-→ Set:
-    min_cap_rate = numeric value
-    max_cap_rate = null
-
-B. LESS THAN / BELOW / UNDER
-Examples:
-- "cap rate below 5%"
-- "under 6 percent"
-
-→ Set:
-    min_cap_rate = null
-    max_cap_rate = numeric value
-
-C. BETWEEN RANGE
-Examples:
-- "cap rate between 5% and 7%"
-- "5 to 8 percent cap"
-
-→ Set:
-    min_cap_rate = lower value
-    max_cap_rate = higher value
-
-D. EXACT VALUE
-Example:
-- "5% cap rate"
-
-→ Set:
-    min_cap_rate = value
-    max_cap_rate = value
-
---------------------------------------------------
-10. CAP RATE NORMALIZATION RULE
---------------------------------------------------
-
-- Remove "%" symbol if present
-- Keep numeric format (e.g. 5.0, 6.25)
-- Do NOT convert to decimal (keep as percentage number)
-
---------------------------------------------------
-11. JSON OUTPUT FORMAT
---------------------------------------------------
-
-Return ONLY valid JSON in this exact format:
-
-{
-  "location_text": string | null,
-  "origin_lat": number | null,
-  "origin_lng": number | null,
-  "radius_m": number | null,
-  "property_type": string | null,
-  "status": string | null,
-  "min_price": number | null,
-  "max_price": number | null,
-  "min_cap_rate": number | null,
-  "max_cap_rate": number | null,
-  "city": string | null,
-  "state": string | null
-}
-
-If a value does not exist, return null.
-
-User text: "${prompt}"
-`;
-
-  const result = await model.generateContent(instruction);
-
-  const rawText = result.response.text();
-  console.log("🧠 Gemini RAW response:", rawText);
-
-  let text = rawText.trim();
-
-  if (text.startsWith("```")) {
-    text = text
-      .replace(/```json/gi, "")
-      .replace(/```/g, "")
-      .trim();
-  }
-
-  const start = text.indexOf("{");
-  const end = text.lastIndexOf("}");
-  if (start !== -1 && end !== -1) {
-    text = text.substring(start, end + 1);
-  }
-
-  try {
-    const parsed = JSON.parse(text);
-    console.log("✅ Gemini parsed params:", parsed);
-
-    return parsed;
-  } catch (e) {
-    console.error("❌ Gemini JSON parse failed:", text);
-    return {
-      location_text: null,
-      origin_lat: null,
-      origin_lng: null,
-      radius_m: null,
-      property_type: null,
-      status: null,
-      min_price: null,
-      max_price: null,
-      min_cap_rate: null,
-      max_cap_rate: null,
-      city: null,
-      state: null,
-    };
-  }
-}
-
-// -------------------------------------------------
-// STATE NORMALIZATION
-// -------------------------------------------------
-function sanitizeLocation(raw: string | null): string | null {
-  if (!raw) return null;
-
-  return raw
-    .toLowerCase()
-    .replace(/\b(outside|near|around|within|close to|next to)\b/gi, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-async function normalizeState(raw: string | null) {
-  if (!raw) return null;
-
-  const cleaned = raw
-    .trim()
-    .toLowerCase()
-    .replace(/\./g, "")
-    .replace(/state of /g, "")
-    .replace(/ state$/, "")
-    .replace(/, us$/, "")
-    .replace(/, usa$/, "")
-    .replace(/,/g, "");
-
-  const normalized =
-    US_STATES[cleaned] ||
-    (/^[A-Za-z]{2}$/.test(cleaned) ? cleaned.toUpperCase() : null);
-
-  console.log("🧭 normalizeState:", { raw, normalized });
-
-  return normalized;
-}
-
-// -------------------------------------------------
-// GOOGLE ADMIN RESOLUTION FOR AMBIGUOUS LOCATIONS
-// -------------------------------------------------
-async function resolveAmbiguousAdminLocation(input: string) {
-  const apiKey = process.env.GOOGLE_MAPS_SERVER_KEY!;
-
-  const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(input)}&key=${apiKey}`;
-
-  const res = await fetch(url);
-  const json = await res.json();
-
-  if (!json.results?.length) {
-    return { city: null, state: null };
-  }
-
-  const components = json.results[0].address_components;
-
-  let city: string | null = null;
-  let state: string | null = null;
-
-  for (const comp of components) {
-    if (comp.types.includes("locality")) {
-      city = comp.long_name;
-    }
-    if (comp.types.includes("administrative_area_level_1")) {
-      state = comp.short_name;
-    }
-  }
-
-  console.log("🧭 Ambiguous Resolution:", {
-    input,
-    resolvedCity: city,
-    resolvedState: state,
-  });
-
-  return { city, state };
-}
-
-// -------------------------------------------------
 // GOOGLE GEOCODING WITH CACHE
 // -------------------------------------------------
 const GEO_CACHE = new Map<string, any>();
@@ -713,6 +566,7 @@ async function geocodeLocation(location: string) {
 export async function GET(req: Request) {
   try {
     const session = await getServerSession(authOptions);
+
     if (!session?.user) {
       console.warn("⛔ Unauthorized request");
       return NextResponse.json(
@@ -728,12 +582,13 @@ export async function GET(req: Request) {
     };
 
     const supabase = createRlsClient(rlsHeaders);
-    const { searchParams } = new URL(req.url);
 
+    const { searchParams } = new URL(req.url);
     const rawSearch = searchParams.get("search") || "";
     const queryText = searchParams.get("query");
 
-    // Decide which to use
+    const aiTriggered = Boolean(queryText && isAiQuery(queryText));
+
     const search =
       rawSearch || (queryText && !isAiQuery(queryText) ? queryText : "");
 
@@ -753,172 +608,88 @@ export async function GET(req: Request) {
         ? "asc"
         : "desc";
 
-    console.log("🔎 Incoming request:", {
-      search,
-      queryText,
-      page,
-      limit,
-      sortField,
-      sortOrder,
-    });
-
     const field = ALLOWED_SORT_FIELDS.has(sortField)
       ? sortField
       : "property_created_at";
 
-    const aiTriggered = Boolean(queryText && isAiQuery(queryText));
     console.log("🧭 Search mode:", aiTriggered ? "AI" : "TRADITIONAL");
 
-    // -------------------------------------------------------
-    // NATURAL LANGUAGE MODE (AI QUERY)
-    // -------------------------------------------------------
+    // =======================================================
+    // 🤖 AI MODE (DSL)
+    // =======================================================
     if (aiTriggered) {
       console.log("🤖 AI search triggered");
 
-      const params = await extractParams(queryText!);
+      // ------------------------------------------
+      // 1. AI → DSL
+      // ------------------------------------------
+      const dsl = await extractDSL(queryText!);
 
-      // ----------------------------------------------
-      // Strip spatial modifiers from location
-      // Example: "outside Charlotte, NC" → "Charlotte, NC"
-      // ----------------------------------------------
-      const isRadiusSearch =
-        params.radius_m !== null && params.location_text !== null;
-
-      // ----------------------------------------------
-      // Resolve Admin Location (City vs State)
-      // ----------------------------------------------
-      if (!isRadiusSearch && (params.city || params.state)) {
-        const rawAdmin = (params.city || params.state).toLowerCase();
-
-        // ----------------------------------------------
-        // If ambiguous admin (e.g. New York)
-        // ----------------------------------------------
-        if (AMBIGUOUS_ADMIN_LOCATIONS.has(rawAdmin)) {
-          console.log("⚠️ Ambiguous admin detected:", rawAdmin);
-
-          const resolved = await resolveAmbiguousAdminLocation(rawAdmin);
-
-          // Prefer STATE-level market search when both exist
-          if (resolved.state) {
-            params.state = resolved.state;
-            params.city = null;
-          } else {
-            params.city = resolved.city;
-            params.state = null;
-          }
-        } else {
-          // Normal admin state normalization
-          if (params.state) {
-            params.state = await normalizeState(params.state);
-          }
-        }
-      }
-
-      // ----------------------------------------------
-      // VALIDATION RULE
-      // Only apply for NON-radius searches
-      // ----------------------------------------------
-      const hasAdminLocation = params.city || params.state;
-
-      const hasAddressSearch = !isRadiusSearch && params.location_text;
-
-      const hasSemanticFilters =
-        params.property_type ||
-        params.status ||
-        params.min_price ||
-        params.max_price ||
-        params.min_cap_rate ||
-        params.max_cap_rate;
-
-      if (
-        !isRadiusSearch &&
-        !hasAdminLocation &&
-        !hasAddressSearch &&
-        !hasSemanticFilters
-      ) {
-        console.warn("⛔ AI search aborted — no valid filters");
+      if (!dsl) {
+        console.warn("❌ DSL parsing failed");
 
         return NextResponse.json({
-          success: true,
-          data: [],
-          total: 0,
-          page,
-          limit,
+          success: false,
+          message: "AI failed to parse query",
         });
       }
 
-      if (params.state) {
-        params.state = await normalizeState(params.state);
-      }
+      // ------------------------------------------
+      // 2. DSL → RPC PARAMS
+      // ------------------------------------------
+      const rpcParams = await mapDSLToRPC(dsl);
 
-      let geo: { lat: number; lng: number } | null = null;
+      console.log("📦 RPC Params Ready:", rpcParams);
 
-      if (isRadiusSearch) {
-        const cleaned = sanitizeLocation(params.location_text);
-
-        if (!cleaned) {
-          console.warn("⚠️ Invalid radius location");
-          return NextResponse.json(
-            { success: false, message: "Invalid radius location" },
-            { status: 422 },
-          );
-        }
-
-        geo = await geocodeLocation(cleaned);
-
-        if (!geo) {
-          console.warn("⚠️ Radius origin geocode failed");
-          return NextResponse.json(
-            { success: false, message: "Radius origin geocode failed" },
-            { status: 422 },
-          );
-        }
-
-        params.origin_lat = geo.lat;
-        params.origin_lng = geo.lng;
-      }
+      // ------------------------------------------
+      // 3. EXECUTE SQL FUNCTION
+      // ------------------------------------------
       const { data, error } = await supabase.rpc(
         "search_properties_by_radius",
         {
-          p_lat: params.origin_lat,
-          p_lng: params.origin_lng,
-          p_radius_m:
-            params.origin_lat && params.origin_lng
-              ? Math.round(Number(params.radius_m))
-              : null,
+          p_lat: rpcParams.p_lat,
+          p_lng: rpcParams.p_lng,
+          p_radius_m: rpcParams.p_radius_m,
 
-          p_type: params.property_type,
-          p_status: params.status,
+          p_type: rpcParams.p_type,
+          p_min_price: rpcParams.p_min_price,
+          p_max_price: rpcParams.p_max_price,
 
-          p_min_price: params.min_price,
-          p_max_price: params.max_price,
+          p_city: rpcParams.p_city,
+          p_state: rpcParams.p_state,
 
-          // ✅ CAP RATE SUPPORT
-          p_min_cap_rate: params.min_cap_rate,
-          p_max_cap_rate: params.max_cap_rate,
+          p_state_in: rpcParams.p_state_in,
+          p_state_not_in: rpcParams.p_state_not_in,
 
-          p_city: params.city,
-          p_state: params.state,
+          p_exclude_city: rpcParams.p_exclude_city,
+          p_exclude_address: rpcParams.p_exclude_address,
+          p_exclude_type: rpcParams.p_exclude_type,
+          p_address: rpcParams.p_address ?? null,
 
-          p_address:
-            !isRadiusSearch && params.location_text
-              ? params.location_text
-              : null,
+          p_min_cap_rate: rpcParams.p_min_cap_rate,
+          p_max_cap_rate: rpcParams.p_max_cap_rate,
+
+          p_exclude_city_in: rpcParams.p_exclude_city_in,
         },
       );
 
-      console.log("📦 AI RPC result:", {
+      console.log("📊 AI RPC Result:", {
         rows: data?.length ?? 0,
-        error: error?.message,
+        error: error?.message ?? null,
       });
 
       if (error) {
+        console.error("❌ RPC Error:", error);
+
         return NextResponse.json({
           success: false,
           message: error.message,
         });
       }
 
+      // ------------------------------------------
+      // 4. SORTING
+      // ------------------------------------------
       const SORT_MAP: Record<string, string> = {
         property_created_at: "created_at",
         property_updated_at: "updated_at",
@@ -927,24 +698,73 @@ export async function GET(req: Request) {
         name: "name",
       };
 
-      const dbField = SORT_MAP[field] || "created_at";
+      // ------------------------------------------
+      // 🧭 RESOLVE SORT (DSL > QUERY PARAMS)
+      // ------------------------------------------
+      let dbField = "created_at";
+      let direction: "asc" | "desc" = "desc";
 
+      // 1️⃣ DSL SORT (highest priority)
+      if (dsl?.sort?.field) {
+        dbField = SORT_MAP[dsl.sort.field] || dsl.sort.field;
+        direction = dsl.sort.direction === "asc" ? "asc" : "desc";
+
+        console.log("🧠 Using DSL sort:", { dbField, direction });
+      }
+      // 2️⃣ FALLBACK TO QUERY PARAMS
+      else {
+        dbField = SORT_MAP[field] || "created_at";
+        direction = sortOrder === "asc" ? "asc" : "desc";
+
+        console.log("📄 Using query sort:", { dbField, direction });
+      }
+
+      // ------------------------------------------
+      // 🔄 APPLY SORT
+      // ------------------------------------------
       const sorted = [...(data ?? [])].sort((a: any, b: any) => {
-        const valA = a[dbField];
-        const valB = b[dbField];
+        const valA = a?.[dbField];
+        const valB = b?.[dbField];
 
+        // Handle nulls (always last)
+        if (valA == null && valB == null) return 0;
         if (valA == null) return 1;
         if (valB == null) return -1;
 
-        if (sortOrder === "asc") {
-          return valA > valB ? 1 : -1;
-        } else {
-          return valA < valB ? 1 : -1;
+        // Numeric vs string safe compare
+        if (typeof valA === "number" && typeof valB === "number") {
+          return direction === "asc" ? valA - valB : valB - valA;
         }
+
+        return direction === "asc"
+          ? String(valA).localeCompare(String(valB))
+          : String(valB).localeCompare(String(valA));
       });
 
-      const paginated = sorted.slice(offset, offset + limit);
+      // ------------------------------------------
+      // 5. PAGINATION
+      // ------------------------------------------
+      const effectiveLimit = dsl?.limit ?? limit;
+      const effectiveOffset = dsl?.offset ?? offset;
 
+      console.log("📊 Effective Pagination:", {
+        effectiveLimit,
+        effectiveOffset,
+      });
+
+      const paginated = sorted.slice(
+        effectiveOffset,
+        effectiveOffset + effectiveLimit,
+      );
+
+      console.log("📄 Pagination:", {
+        total: sorted.length,
+        returned: paginated.length,
+      });
+
+      // ------------------------------------------
+      // 6. SIGN URL
+      // ------------------------------------------
       const signedData = await Promise.all(
         paginated.map(async (p: any) => ({
           ...p,
@@ -952,11 +772,11 @@ export async function GET(req: Request) {
         })),
       );
 
-      console.log("✅ AI response rows:", signedData.length);
+      console.log("✅ AI response ready");
 
       return NextResponse.json({
         success: true,
-        extracted_params: params,
+        dsl,
         data: signedData,
         total: data?.length ?? 0,
         page,
@@ -964,44 +784,39 @@ export async function GET(req: Request) {
       });
     }
 
-    // -------------------------------------------------------
-    // TRADITIONAL SEARCH MODE
-    // -------------------------------------------------------
+    // =======================================================
+    // 📄 TRADITIONAL SEARCH (UNCHANGED)
+    // =======================================================
     console.log("📄 Traditional search executing");
 
     let query = supabase
       .from("vw_property_with_image")
       .select(
         `
-      property_id,
-      name,
-      landlord,
-      address,
-      city,
-      state,
-      type,
-      status,
-      price,
-      cap_rate,
-      file_url,
-      latitude,
-      longitude
-    `,
+        property_id,
+        name,
+        landlord,
+        address,
+        city,
+        state,
+        type,
+        status,
+        price,
+        cap_rate,
+        file_url,
+        latitude,
+        longitude
+      `,
         { count: "exact" },
       )
       .neq("status", "Review");
 
-    // -------------------------------------------------------
-    // APPLY SEARCH FILTER SAFELY
-    // -------------------------------------------------------
     if (search && search.trim().length > 0) {
-      const raw = search;
-
-      const safe = raw
+      const safe = search
         .trim()
-        .replace(/[%_]/g, "") // remove wildcard breakers
-        .replace(/,/g, "") // remove commas
-        .replace(/\s+/g, " "); // normalize spaces
+        .replace(/[%_]/g, "")
+        .replace(/,/g, "")
+        .replace(/\s+/g, " ");
 
       const orFilter = [
         `name.ilike.%${safe}%`,
@@ -1012,68 +827,30 @@ export async function GET(req: Request) {
         `status.ilike.%${safe}%`,
       ].join(",");
 
-      // -------------------------------
-      // DEBUG LOGGING
-      // -------------------------------
-      console.log("🔍 Traditional Search Debug:", {
-        raw_input: raw,
-        sanitized_input: safe,
-        or_filter_string: orFilter,
-      });
+      console.log("🔍 Traditional Search:", { safe });
 
       query = query.or(orFilter);
     }
 
-    // -------------------------------------------------------
-    // SORTING
-    // -------------------------------------------------------
     query = query.order(field, { ascending: sortOrder === "asc" });
-
-    // -------------------------------------------------------
-    // PAGINATION
-    // -------------------------------------------------------
     query = query.range(offset, offset + limit - 1);
 
-    // -------------------------------------------------------
-    // EXECUTE QUERY
-    // -------------------------------------------------------
     const { data, count, error } = await query;
 
-    // -------------------------------
-    // DEBUG RESULT LOGGING
-    // -------------------------------
-    console.log("📊 Traditional Query Result:", {
-      returned_rows: data?.length ?? 0,
-      total_count: count ?? 0,
-      error: error?.message ?? null,
-    });
-
     if (error) {
-      console.error("❌ Traditional Query Error:", error);
+      console.error("❌ Traditional Error:", error);
       return NextResponse.json({
         success: false,
         message: error.message,
       });
     }
 
-    // -------------------------------------------------------
-    // SIGN URL PROCESSING
-    // -------------------------------------------------------
     const signedData = await Promise.all(
       (data ?? []).map(async (p: any) => ({
         ...p,
         file_url: p.file_url ? await getSignedUrl(p.file_url) : null,
       })),
     );
-
-    // -------------------------------
-    // FINAL RESPONSE LOG
-    // -------------------------------
-    console.log("✅ Traditional Final Response:", {
-      signed_rows: signedData.length,
-      page,
-      limit,
-    });
 
     return NextResponse.json({
       success: true,
@@ -1084,6 +861,7 @@ export async function GET(req: Request) {
     });
   } catch (err: any) {
     console.error("🔥 API Fatal Error:", err);
+
     return NextResponse.json(
       { success: false, message: err.message },
       { status: 500 },
