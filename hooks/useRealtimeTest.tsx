@@ -1,7 +1,8 @@
+/* eslint-disable @typescript-eslint/no-unused-expressions */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useCallback } from "react";
 import { toast } from "sonner";
 import { useSession } from "next-auth/react";
 import type {
@@ -10,10 +11,15 @@ import type {
 } from "@supabase/supabase-js";
 
 import { createRealtimeClient } from "@/lib/supabaseRealtimeClient";
-import {
-  acquireRealtimeChannel,
-  releaseRealtimeChannel,
-} from "@/lib/realtimeChannelLock";
+
+// 🔥 GLOBAL SINGLETON (per tab)
+declare global {
+  interface Window {
+    __realtimeChannel?: RealtimeChannel | null;
+    __realtimeUserId?: string | null;
+    __realtimeInitializing?: boolean;
+  }
+}
 
 type DocumentRegistryRow = {
   file_id: string;
@@ -33,9 +39,34 @@ export function useRealtimeTest(
 ) {
   const { data: session } = useSession();
 
-  const channelRef = useRef<RealtimeChannel | null>(null);
   const processedRef = useRef<Set<string>>(new Set());
+  const reviewTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  const onReviewReadyRef = useRef(options?.onReviewReady);
+  const onTenantReadyRef = useRef(options?.onTenantReady);
+  const onExtractionFailedRef = useRef(options?.onExtractionFailed);
+
+  useEffect(() => {
+    onReviewReadyRef.current = options?.onReviewReady;
+    onTenantReadyRef.current = options?.onTenantReady;
+    onExtractionFailedRef.current = options?.onExtractionFailed;
+  }, [
+    options?.onReviewReady,
+    options?.onTenantReady,
+    options?.onExtractionFailed,
+  ]);
+
+  const triggerReviewUpdate = useCallback(() => {
+    if (reviewTimeoutRef.current) {
+      clearTimeout(reviewTimeoutRef.current);
+    }
+
+    reviewTimeoutRef.current = setTimeout(() => {
+      onReviewReadyRef.current?.();
+    }, 500);
+  }, []);
+
+  // 🔁 DUPLICATE LEASE
   async function checkDuplicateLease(fileId: string) {
     try {
       const res = await fetch("/api/check-duplicate/lease", {
@@ -59,13 +90,12 @@ export function useRealtimeTest(
             style={{ cursor: "pointer", width: "100%" }}
           >
             <div>
-              Duplicate tenant information detected. The following record(s)
+              Duplicate Tenant information detected. The following record(s)
               will not be saved:
             </div>
-
             <ul style={{ marginTop: 6, paddingLeft: 18 }}>
               {tenantList.map((t: string, idx: number) => (
-                <li key={`${toastId}-tenant-${idx}`}>{t}</li>
+                <li key={`${toastId}-${idx}`}>{t}</li>
               ))}
             </ul>
           </div>,
@@ -73,10 +103,11 @@ export function useRealtimeTest(
         );
       }
     } catch (err) {
-      console.error("Duplicate lease lookup failed:", err);
+      console.error("[realtime] duplicate lease error:", err);
     }
   }
 
+  // 🔁 DUPLICATE PROPERTY
   async function checkDuplicateProperty(fileId: string) {
     try {
       const res = await fetch("/api/check-duplicate/property", {
@@ -91,6 +122,7 @@ export function useRealtimeTest(
         const propertyList = json.duplicates.map(
           (d: any) => d.property_name ?? "Unknown Property",
         );
+
         const toastId = `dup-prop-${fileId}`;
 
         toast.warning(
@@ -101,7 +133,6 @@ export function useRealtimeTest(
             <div>
               Duplicate property information(s) detected and will not be saved:
             </div>
-
             <ul style={{ marginTop: 6, paddingLeft: 18 }}>
               {propertyList.map((p: string, idx: number) => (
                 <li key={`${toastId}-${idx}`}>{p}</li>
@@ -112,27 +143,48 @@ export function useRealtimeTest(
         );
       }
     } catch (err) {
-      console.error("Duplicate property lookup failed:", err);
+      console.error("[realtime] duplicate property error:", err);
     }
   }
 
   useEffect(() => {
     const userId = session?.user?.id;
+
     if (!enabled || !userId) return;
 
-    // 🚨 prevents duplicate websocket clients
-    if (!acquireRealtimeChannel()) return;
+    // reuse existing
+    if (window.__realtimeChannel && window.__realtimeUserId === userId) {
+      return;
+    }
+
+    // prevent duplicate init
+    if (window.__realtimeInitializing) {
+      return;
+    }
+
+    window.__realtimeInitializing = true;
+
+    // user changed → reset
+    if (window.__realtimeChannel && window.__realtimeUserId !== userId) {
+      window.__realtimeChannel.unsubscribe();
+      window.__realtimeChannel = null;
+    }
 
     async function init() {
       try {
         const res = await fetch("/api/realtime-token", { method: "POST" });
         const json = await res.json();
+
         if (!json.success) throw new Error("Realtime token failed");
 
         const supabase = createRealtimeClient(json.access_token);
 
+        supabase.realtime.setAuth(json.access_token);
+
         const channel = supabase
-          .channel(`document-extraction-alerts:${userId}`)
+          .channel(`realtime:${userId}`)
+
+          // 📄 DOCUMENT EVENTS
           .on(
             "postgres_changes",
             {
@@ -159,29 +211,28 @@ export function useRealtimeTest(
                     onClick={() => toast.dismiss(toastId)}
                     style={{ cursor: "pointer", width: "100%" }}
                   >
-                    {`Data extraction for "${row.file_name ?? "document"}" completed.`}
+                    {isRentRoll
+                      ? `Rent Roll extraction completed for "${row.file_name ?? "document"}". Please check the Tenant page to view the newly added data.`
+                      : `Data extraction completed for "${row.file_name ?? "document"}". Please notify your Direct Manager or Admin about the newly added document.`}
                   </div>,
                   { id: toastId, duration: 30000 },
                 );
 
-                // 🔒 idempotent duplicate check
                 if (!processedRef.current.has(row.file_id)) {
                   processedRef.current.add(row.file_id);
 
                   setTimeout(() => {
-                    if (isRentRoll) {
-                      void checkDuplicateLease(row.file_id);
-                    } else {
-                      void checkDuplicateProperty(row.file_id);
-                    }
+                    isRentRoll
+                      ? checkDuplicateLease(row.file_id)
+                      : checkDuplicateProperty(row.file_id);
                   }, 1500);
                 }
 
                 if (isRentRoll) {
-                  options?.onTenantReady?.();
+                  onTenantReadyRef.current?.();
                 } else {
                   setTimeout(() => {
-                    options?.onReviewReady?.();
+                    onReviewReadyRef.current?.();
                   }, 500);
                 }
               }
@@ -192,18 +243,32 @@ export function useRealtimeTest(
                     onClick={() => toast.dismiss(toastId)}
                     style={{ cursor: "pointer", width: "100%" }}
                   >
-                    {`Extraction failed for "${row.file_name ?? "document"}".`}
+                    {`Extraction failed for "${row.file_name ?? "document"}". Please check the Error Document List on the Document page for more details.`}
                   </div>,
                   { id: toastId, duration: 30000 },
                 );
 
-                options?.onExtractionFailed?.();
+                onExtractionFailedRef.current?.();
 
                 window.dispatchEvent(new Event("error-document-added"));
               }
             },
           )
-          .subscribe((status: string) => {
+
+          // 🏢 PROPERTY EVENTS (silent UI refresh)
+          .on(
+            "postgres_changes",
+            {
+              event: "*",
+              schema: "api",
+              table: "property",
+            },
+            () => {
+              triggerReviewUpdate();
+            },
+          )
+
+          .subscribe((status: any) => {
             if (status === "SUBSCRIBED") {
               console.log("[realtime] subscribed");
             }
@@ -211,22 +276,27 @@ export function useRealtimeTest(
             if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
               console.warn("[realtime] subscription failed");
             }
+
+            if (status === "CLOSED") {
+              console.warn("[realtime] CLOSED");
+            }
           });
 
-        channelRef.current = channel;
+        window.__realtimeChannel = channel;
+        window.__realtimeUserId = userId;
+        window.__realtimeInitializing = false;
       } catch (err) {
         console.error("[realtime] init failed", err);
+        window.__realtimeInitializing = false;
       }
     }
 
     init();
 
     return () => {
-      releaseRealtimeChannel();
-      if (channelRef.current) {
-        channelRef.current.unsubscribe();
+      if (reviewTimeoutRef.current) {
+        clearTimeout(reviewTimeoutRef.current);
       }
-      channelRef.current = null;
     };
-  }, [enabled, options, session?.user?.id]);
+  }, [enabled, session?.user?.id, triggerReviewUpdate]);
 }

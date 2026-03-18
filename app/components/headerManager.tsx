@@ -43,30 +43,26 @@ export const TopHeaderManager: React.FC = () => {
   const [reviewCount, setReviewCount] = React.useState(0);
 
   const fetchReviewCount = React.useCallback(async () => {
-    const maxAttempts = 5;
+    try {
+      const res = await fetch("/api/review/count");
 
-    for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      try {
-        const res = await fetch("/api/review/count");
+      if (!res.ok) throw new Error("Failed to fetch review count");
 
-        if (!res.ok) throw new Error("Failed to fetch review count");
+      const json = await res.json();
+      const newTotal = json.total ?? 0;
 
-        const json = await res.json();
-        const newTotal = json.total ?? 0;
+      setReviewCount((prev) => {
+        if (prev !== newTotal) return newTotal;
+        return prev;
+      });
 
-        // only update when value changes
-        if (newTotal !== reviewCount) {
-          setReviewCount(newTotal);
-          return;
-        }
-      } catch (err) {
-        console.error("Review count fetch error:", err);
-      }
-
-      // wait before retry
-      await new Promise((resolve) => setTimeout(resolve, 300));
+      return;
+    } catch (err) {
+      console.error("Review count fetch error:", err);
     }
-  }, [reviewCount]);
+
+    await new Promise((resolve) => setTimeout(resolve, 300));
+  }, []);
 
   React.useEffect(() => {
     fetchReviewCount();
@@ -84,19 +80,18 @@ export const TopHeaderManager: React.FC = () => {
     };
   }, [fetchReviewCount]);
 
-  useRealtimeTest(true, {
-    // NON-RENT ROLL PASSED → REVIEW QUEUE
-    onReviewReady: fetchReviewCount,
+  const realtimeOptions = React.useMemo(
+    () => ({
+      onReviewReady: fetchReviewCount,
+      onExtractionFailed: fetchReviewCount,
+      onTenantReady: () => {
+        window.dispatchEvent(new Event("document-list-updated"));
+      },
+    }),
+    [fetchReviewCount],
+  );
 
-    // FAILED → ERROR QUEUE
-    onExtractionFailed: fetchReviewCount,
-
-    // RENT ROLL PASSED → TENANT VIEW READY
-    onTenantReady: () => {
-      // Notify the component that owns the Document Badge
-      window.dispatchEvent(new Event("document-list-updated"));
-    },
-  });
+  useRealtimeTest(true, realtimeOptions);
 
   // --------------------------------------------------
   // Avatar Fetch Logic
