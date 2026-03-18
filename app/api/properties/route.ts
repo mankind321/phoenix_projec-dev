@@ -28,7 +28,59 @@ function createRlsClient(headers: Record<string, string>) {
 
 function normalizeStateValue(val: string) {
   const key = val.toLowerCase().trim();
-  return US_STATES[key] || val.toUpperCase();
+  return US_STATES[key] || US_STATES[val.toLowerCase()] || val.toUpperCase();
+}
+
+function parseNumericValue(val: any): number | any {
+  if (typeof val === "number") {
+    // ✅ Handle decimal percentages like 0.06 → 6
+    if (val > 0 && val < 1) {
+      return val * 100;
+    }
+    return val;
+  }
+
+  if (typeof val === "string") {
+    const v = val.toLowerCase().replace(/,/g, "").trim();
+
+    // ----------------------------------
+    // ✅ Handle percentage (e.g., "6%")
+    // ----------------------------------
+    if (v.includes("%")) {
+      const num = parseFloat(v.replace("%", ""));
+      return isNaN(num) ? val : num;
+    }
+
+    // ----------------------------------
+    // ✅ Handle suffix (k, m, b)
+    // ----------------------------------
+    const match = v.match(/^(\d+(\.\d+)?)(k|m|b)?$/);
+    if (match) {
+      let num = parseFloat(match[1]);
+      const suffix = match[3];
+
+      if (suffix === "k") num *= 1_000;
+      if (suffix === "m") num *= 1_000_000;
+      if (suffix === "b") num *= 1_000_000_000;
+
+      return num;
+    }
+
+    // ----------------------------------
+    // ✅ Handle decimal string like "0.06"
+    // ----------------------------------
+    const asNumber = parseFloat(v);
+    if (!isNaN(asNumber)) {
+      if (asNumber > 0 && asNumber < 1) {
+        return asNumber * 100; // normalize to %
+      }
+      return asNumber;
+    }
+
+    return val;
+  }
+
+  return val;
 }
 
 // ----------------------------------------------
@@ -55,10 +107,11 @@ function isAiQuery(text: string | null): boolean {
   // -----------------------------------------
   const financialPattern = /\b(\d+(\.\d+)?\s?(k|m|million|b|billion))\b/;
 
-  const percentPattern = /\b\d+(\.\d+)?\s?%|\bpercent\b|\bcap\b/;
+  // ✅ FIXED: "cap" → "cap rate"
+  const percentPattern = /\b\d+(\.\d+)?\s?%|\bpercent\b|\bcap rate\b/;
 
   const comparisonPattern =
-    /\b(above|below|over|under|more than|less than|between|to)\b/;
+    /\b(above|below|over|under|more than|less than|between|to|outside|at least|at most|greater than|less than or equal)\b/;
 
   if (
     financialPattern.test(t) ||
@@ -66,6 +119,17 @@ function isAiQuery(text: string | null): boolean {
     comparisonPattern.test(t)
   ) {
     console.log("💰 Financial pattern detected → AI search");
+    return true;
+  }
+
+  // -----------------------------------------
+  // 2.5️⃣ Structured filter / negation detection
+  // -----------------------------------------
+  const negationPattern = /\b(not|exclude|without|except|outside)\b/;
+  const locationFilterPattern = /\b(on|in|at)\s+[a-z]/;
+
+  if (negationPattern.test(t) && locationFilterPattern.test(t)) {
+    console.log("🧠 Structured exclusion detected → AI search");
     return true;
   }
 
@@ -108,6 +172,17 @@ function isAiQuery(text: string | null): boolean {
     return true;
   }
 
+  // -----------------------------------------
+  // 5️⃣ Structured query detection (SAFE VERSION)
+  // Avoid short/simple queries triggering AI
+  // -----------------------------------------
+  const structuredPattern = /\b(in|on|at|with|having|where)\b/;
+
+  if (structuredPattern.test(t) && t.split(" ").length >= 4) {
+    console.log("🧠 Structured query detected → AI search");
+    return true;
+  }
+
   console.log("📄 No AI intent detected → Traditional search");
   return false;
 }
@@ -121,121 +196,41 @@ async function extractDSL(prompt: string) {
   const model = genAI.getGenerativeModel({ model: MODEL });
 
   const instruction = `
-Convert user query into JSON DSL.
+Return EXACTLY one valid JSON object. No text, no code blocks.
 
-Operators:
-=, !=, in, not_in
-
-Rules:
-- "TX and NC" → state IN ["TX","NC"]
-- "outside TX and NC" → state NOT IN ["TX","NC"]
-- "not in Charlotte" → city != Charlotte
-- "not on Main Street" → address != "Main Street"
-
-PRICE RULES:
-
-- "above 5M" → field="price", op=">", value=5000000
-- "below 2M" → field="price", op="<", value=2000000
-- "between 1M and 3M" → 
-    field="price", op="between", value=[1000000,3000000]
-
-Normalize:
-- k = 1,000
-- m = 1,000,000
-- b = 1,000,000,000
-
-CAP RATE RULES:
-
-- If user mentions "%" or "cap rate", interpret as cap_rate
-
-Examples:
-
-- "above 6% cap rate"
-  → { field: "cap_rate", op: ">", value: 6 }
-
-- "below 5% cap"
-  → { field: "cap_rate", op: "<", value: 5 }
-
-- "between 5% and 7%"
-  → { field: "cap_rate", op: "between", value: [5,7] }
-
-IMPORTANT:
-- Remove "%" symbol
-- Keep numeric value (6%, 7.5% → 6, 7.5)
-- Do NOT convert to decimal
-
-SORT RULES:
-
-If user mentions sorting, extract into "sort":
-
-Examples:
-
-- "sorted by price"
-  → { "field": "price", "direction": "asc" }
-
-- "sort by price descending"
-  → { "field": "price", "direction": "desc" }
-
-- "highest price"
-  → { "field": "price", "direction": "desc" }
-
-- "lowest price"
-  → { "field": "price", "direction": "asc" }
-
-- "best cap rate"
-  → { "field": "cap_rate", "direction": "desc" }
-
-- "latest"
-  → { "field": "created_at", "direction": "desc" }
-
-  LIMIT RULES:
-
-If user intent is singular:
-
-- "highest property"
-- "cheapest property"
-- "best property"
-- "top property"
-- "most expensive property"
-
-→ set:
-  "limit": 1
-
-If plural (properties), keep default (20)
-
-STATUS RULES:
-
-Extract status into:
-- "Available"
-- "Leased"
-- "Sold"
-- "Pending"
-- "Off Market"
-- "Occupied"
-- "Under Maintenance"
-- "Not Available"
-
-Example:
-"available properties"
-→ { field: "status", op: "=", value: "Available" }
-
-Return:
+SCHEMA:
 {
-  "geo": {
-    "location_text": string | null,
-    "radius_m": number | null
-  },
-  "filters": [
-    {
-      "field": "state" | "city" | "address" | "type" | "price",
-      "op": "=" | "!=" | "in" | "not_in",
-      "value": string | number | string[]
-    }
-  ],
+  "geo": { "location_text": string|null, "radius_m": number|null },
+  "filters": [{ "field": string, "op": string, "value": any }],
   "sort": null,
   "limit": 20,
   "offset": 0
 }
+
+FIELDS (ONLY these):
+type, price, cap_rate, state, city, address, status
+
+RULES:
+- Use ONLY allowed fields (map "property type"→type, "cap rate"→cap_rate)
+- Operators: = != > < >= <= in not_in between not_between like not_like
+- between/not_between → [min,max]; in/not_in → array
+- price: convert k/m/b (2M→2000000)
+- cap_rate: number (6 = 6%, NOT 0.06)
+- text → LIKE (%value%)
+
+SPECIAL:
+- "TX and NC" → state in ["TX","NC"]
+- "outside TX and NC" → state not_in ["TX","NC"]
+- "not in Charlotte" → city != "Charlotte"
+
+SORT:
+- highest price → price desc
+- lowest price → price asc
+- best cap rate → cap_rate desc
+- latest → created_at desc
+
+LIMIT:
+- singular intent → limit 1
 
 User: "${prompt}"
 `;
@@ -249,6 +244,8 @@ User: "${prompt}"
 
   try {
     const parsed = JSON.parse(text);
+    if (!parsed || typeof parsed !== "object") return null;
+    if (!Array.isArray(parsed.filters)) parsed.filters = [];
     console.log("✅ Parsed DSL:", parsed);
     return parsed;
   } catch {
@@ -285,13 +282,20 @@ async function mapDSLToRPC(dsl: any) {
     p_min_price: null,
     p_max_price: null,
 
+    // ✅ ADD THESE (FOR OR LOGIC)
+    p_not_min_price: null,
+    p_not_max_price: null,
+
     p_min_cap_rate: null,
     p_max_cap_rate: null,
+
+    // (optional future)
+    p_not_min_cap_rate: null,
+    p_not_max_cap_rate: null,
 
     p_address: null,
     p_exclude_city_in: null,
 
-    // ✅ ADD THESE
     p_status: null,
     p_status_in: null,
     p_status_not_in: null,
@@ -344,10 +348,38 @@ async function mapDSLToRPC(dsl: any) {
     typeof dsl.geo?.radius_m === "number" ? Math.round(dsl.geo.radius_m) : null;
 
   for (const f of dsl.filters || []) {
-    const { field, op, value } = f;
+    const { field, op, value: rawValue } = f;
+
+    let value = rawValue;
+
+    // ----------------------------------
+    // ✅ Normalize numeric fields safely
+    // ----------------------------------
+    if (field === "price" || field === "cap_rate") {
+      if (Array.isArray(value)) {
+        value = value.map((v) => parseNumericValue(v));
+      } else {
+        value = parseNumericValue(value);
+      }
+    }
 
     // ✅ ADD HERE (very important)
-    if (!["=", "!=", "in", "not_in", ">", "<", "between"].includes(op)) {
+    const SUPPORTED_OPS = [
+      "=",
+      "!=",
+      ">",
+      "<",
+      ">=",
+      "<=",
+      "in",
+      "not_in",
+      "between",
+      "not_between",
+      "like",
+      "not_like",
+    ];
+
+    if (!SUPPORTED_OPS.includes(op)) {
       console.warn("⚠️ Unsupported operator:", op);
       continue;
     }
@@ -363,7 +395,10 @@ async function mapDSLToRPC(dsl: any) {
       }
 
       if (op === "!=") {
-        params.p_state_not_in = [normalize(value)];
+        const val = normalize(value);
+        params.p_state_not_in = params.p_state_not_in
+          ? [...params.p_state_not_in, val]
+          : [val];
       }
 
       if (op === "in") {
@@ -380,53 +415,94 @@ async function mapDSLToRPC(dsl: any) {
       if (op === "=") params.p_city = value;
 
       if (op === "!=") {
-        params.p_exclude_city = String(value).toLowerCase();
+        const val = String(value).toLowerCase();
+        params.p_exclude_city_in = params.p_exclude_city_in
+          ? [...params.p_exclude_city_in, val]
+          : [val];
       }
 
       if (op === "not_in") {
-        params.p_exclude_city_in = Array.isArray(value)
+        const vals = Array.isArray(value)
           ? value.map((v: string) => v.toLowerCase())
           : [String(value).toLowerCase()];
+
+        params.p_exclude_city_in = params.p_exclude_city_in
+          ? [...params.p_exclude_city_in, ...vals]
+          : vals;
       }
     }
 
     if (field === "address") {
       if (op === "=") {
-        params.p_address = value; // ✅ NEW
+        params.p_address = value;
       }
+
       if (op === "!=") {
         params.p_exclude_address = value;
+      }
+
+      // ✅ NEW
+      if (op === "like") {
+        params.p_address = value.includes("%") ? value : `%${value}%`;
+      }
+
+      if (op === "not_like") {
+        params.p_exclude_address = value.includes("%") ? value : `%${value}%`;
       }
     }
 
     if (field === "type") {
       if (op === "=") params.p_type = value;
+
       if (op === "!=") params.p_exclude_type = value;
+
+      if (op === "like") {
+        params.p_type = value.includes("%") ? value : `%${value}%`;
+      }
+
+      if (op === "not_like") {
+        params.p_exclude_type = value.includes("%") ? value : `%${value}%`;
+      }
     }
 
     if (field === "price") {
-      if (op === ">") {
+      if (op === ">" || op === ">=") {
         params.p_min_price = value;
       }
-      if (op === "<") {
+
+      if (op === "<" || op === "<=") {
         params.p_max_price = value;
       }
+
       if (op === "between") {
         params.p_min_price = value[0];
         params.p_max_price = value[1];
       }
+
+      if (op === "not_between") {
+        params.p_not_min_price = value[0];
+        params.p_not_max_price = value[1];
+      }
     }
 
     if (field === "cap_rate") {
-      if (op === ">") {
+      if (op === ">" || op === ">=") {
         params.p_min_cap_rate = value;
       }
-      if (op === "<") {
+
+      if (op === "<" || op === "<=") {
         params.p_max_cap_rate = value;
       }
+
       if (op === "between") {
         params.p_min_cap_rate = value[0];
         params.p_max_cap_rate = value[1];
+      }
+
+      // optional future
+      if (op === "not_between") {
+        params.p_not_min_cap_rate = value[0];
+        params.p_not_max_cap_rate = value[1];
       }
     }
 
@@ -439,7 +515,10 @@ async function mapDSLToRPC(dsl: any) {
       }
 
       if (op === "!=") {
-        params.p_status_not_in = [normalize(value)];
+        const val = normalize(value);
+        params.p_status_not_in = params.p_status_not_in
+          ? [...params.p_status_not_in, val]
+          : [val];
       }
 
       if (op === "in") {
@@ -633,10 +712,11 @@ export async function GET(req: Request) {
     const rawSearch = searchParams.get("search") || "";
     const queryText = searchParams.get("query");
 
-    const aiTriggered = Boolean(queryText && isAiQuery(queryText));
+    const aiDetected = queryText ? isAiQuery(queryText) : false;
 
-    const search =
-      rawSearch || (queryText && !isAiQuery(queryText) ? queryText : "");
+    const aiTriggered = Boolean(queryText && aiDetected);
+
+    const search = rawSearch || (queryText && !aiDetected ? queryText : "");
 
     console.log("🧾 Search Parameter Resolution:", {
       rawSearch,
@@ -701,6 +781,10 @@ export async function GET(req: Request) {
           p_min_price: rpcParams.p_min_price,
           p_max_price: rpcParams.p_max_price,
 
+          // ✅ ADD THESE
+          p_not_min_price: rpcParams.p_not_min_price,
+          p_not_max_price: rpcParams.p_not_max_price,
+
           p_city: rpcParams.p_city,
           p_state: rpcParams.p_state,
 
@@ -714,6 +798,9 @@ export async function GET(req: Request) {
 
           p_min_cap_rate: rpcParams.p_min_cap_rate,
           p_max_cap_rate: rpcParams.p_max_cap_rate,
+
+          p_not_min_cap_rate: rpcParams.p_not_min_cap_rate,
+          p_not_max_cap_rate: rpcParams.p_not_max_cap_rate,
 
           p_exclude_city_in: rpcParams.p_exclude_city_in,
 
