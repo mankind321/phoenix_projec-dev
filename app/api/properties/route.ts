@@ -106,8 +106,6 @@ function isAiQuery(text: string | null): boolean {
   // 2️⃣ Financial / Investment Indicators
   // -----------------------------------------
   const financialPattern = /\b(\d+(\.\d+)?\s?(k|m|million|b|billion))\b/;
-
-  // ✅ FIXED: "cap" → "cap rate"
   const percentPattern = /\b\d+(\.\d+)?\s?%|\bpercent\b|\bcap rate\b/;
 
   const comparisonPattern =
@@ -173,8 +171,7 @@ function isAiQuery(text: string | null): boolean {
   }
 
   // -----------------------------------------
-  // 5️⃣ Structured query detection (SAFE VERSION)
-  // Avoid short/simple queries triggering AI
+  // 5️⃣ Structured query detection (SAFE)
   // -----------------------------------------
   const structuredPattern = /\b(in|on|at|with|having|where)\b/;
 
@@ -183,10 +180,138 @@ function isAiQuery(text: string | null): boolean {
     return true;
   }
 
+  // -----------------------------------------
+  // 🔁 SHARED DETECTION
+  // -----------------------------------------
+  const hasPropertyWord =
+    t.includes("property") ||
+    t.includes("properties") ||
+    t.includes("building") ||
+    t.includes("space");
+
+  // -----------------------------------------
+  // 6️⃣ Property type detection
+  // -----------------------------------------
+  const typeKeywords = [
+    "industrial",
+    "office",
+    "retail",
+    "mixed use",
+    "multifamily",
+    "apartment",
+    "warehouse",
+    "commercial",
+    "residential",
+  ];
+
+  const hasTypeKeyword = typeKeywords.some((keyword) => t.includes(keyword));
+
+  if (hasTypeKeyword && hasPropertyWord) {
+    console.log("🏢 Structured property type query → AI search");
+    return true;
+  }
+
+  // -----------------------------------------
+  // 7️⃣ Status detection (FIXED)
+  // -----------------------------------------
+  const statusKeywords = [
+    "available",
+    "occupied",
+    "leased",
+    "sold",
+    "pending",
+    "off market",
+    "under maintenance",
+  ];
+
+  const hasStatusKeyword = statusKeywords.some((k) =>
+    new RegExp(`\\b${k}\\b`).test(t),
+  );
+  const hasLogicalOperator = /\b(and|or|not)\b/.test(t);
+
+  if (
+    (hasStatusKeyword && hasPropertyWord) ||
+    (hasStatusKeyword && hasLogicalOperator)
+  ) {
+    console.log("🏷️ Structured status query → AI search");
+    return true;
+  }
+
   console.log("📄 No AI intent detected → Traditional search");
   return false;
 }
 
+function normalizeStatusValue(val: string): string | null {
+  if (!val) return null;
+
+  const v = val.toLowerCase().trim();
+
+  // ----------------------------------
+  // 🎯 STRICT MAPPING → YOUR 4 STATUSES
+  // ----------------------------------
+  const STATUS_MAP: Record<string, string> = {
+    // ✅ AVAILABLE
+    available: "Available",
+    active: "Available",
+    vacant: "Available",
+    open: "Available",
+    "for lease": "Available",
+    "for rent": "Available",
+
+    // ✅ OCCUPIED
+    occupied: "Occupied",
+    leased: "Occupied",
+    rented: "Occupied",
+    "fully occupied": "Occupied",
+    "tenant occupied": "Occupied",
+
+    // ✅ NOT AVAILABLE
+    "not available": "Not Available",
+    unavailable: "Not Available",
+    "off market": "Not Available",
+    inactive: "Not Available",
+    withdrawn: "Not Available",
+    "not listed": "Not Available",
+
+    // ✅ UNDER MAINTENANCE
+    maintenance: "Under Maintenance",
+    "under maintenance": "Under Maintenance",
+    renovation: "Under Maintenance",
+    "under renovation": "Under Maintenance",
+    repair: "Under Maintenance",
+    "being repaired": "Under Maintenance",
+  };
+
+  // ----------------------------------
+  // 1️⃣ EXACT MATCH
+  // ----------------------------------
+  if (STATUS_MAP[v]) {
+    return STATUS_MAP[v];
+  }
+
+  // ----------------------------------
+  // 2️⃣ PARTIAL MATCH (handles phrases)
+  // ----------------------------------
+  for (const key in STATUS_MAP) {
+    if (v.includes(key)) {
+      return STATUS_MAP[key];
+    }
+  }
+
+  // ----------------------------------
+  // 3️⃣ HARD FALLBACK (STRICT MODE)
+  // ----------------------------------
+  const fallback = val.charAt(0).toUpperCase() + val.slice(1).toLowerCase();
+
+  const ALLOWED = [
+    "Available",
+    "Occupied",
+    "Not Available",
+    "Under Maintenance",
+  ];
+
+  return ALLOWED.includes(fallback) ? fallback : null;
+}
 // ----------------------------------------------
 // 🧠 DSL EXTRACTOR (REPLACES extractParams)
 // ----------------------------------------------
@@ -217,6 +342,9 @@ RULES:
 - price: convert k/m/b (2M→2000000)
 - cap_rate: number (6 = 6%, NOT 0.06)
 - text → LIKE (%value%)
+- "on Market Street" → address like "%Market Street%"
+- "not on Market Street" → address not_like "%Market Street%"
+- multiple streets → address in ["..."]
 
 SPECIAL:
 - "TX and NC" → state in ["TX","NC"]
@@ -258,6 +386,8 @@ User: "${prompt}"
 // 🔁 DSL → RPC MAPPER
 // ----------------------------------------------
 async function mapDSLToRPC(dsl: any) {
+  const appendArray = (arr: any[] | null, vals: any[]) =>
+    arr ? [...arr, ...vals] : vals;
   console.log("🔁 Mapping DSL:", dsl);
 
   let lat = null;
@@ -269,6 +399,8 @@ async function mapDSLToRPC(dsl: any) {
     p_radius_m: null,
 
     p_type: null,
+    p_type_in: null, // ✅ ADD THIS
+    p_exclude_type_in: null,
     p_city: null,
     p_state: null,
 
@@ -299,6 +431,10 @@ async function mapDSLToRPC(dsl: any) {
     p_status: null,
     p_status_in: null,
     p_status_not_in: null,
+
+    p_city_in: null, // ✅ ADD
+    p_street_in: null, // ✅ ADD
+    p_exclude_street_in: null, // ✅ ADD
   };
 
   if (dsl.geo?.location_text) {
@@ -335,7 +471,7 @@ async function mapDSLToRPC(dsl: any) {
           !params.p_exclude_city &&
           !params.p_exclude_city_in
         ) {
-          params.p_city = location;
+          params.p_city = location.toLowerCase().trim();
         }
       }
     }
@@ -402,29 +538,39 @@ async function mapDSLToRPC(dsl: any) {
       }
 
       if (op === "in") {
-        params.p_state = null; // 🚨 prevent conflict
-        params.p_state_in = value.map(normalize);
+        const vals = (Array.isArray(value) ? value : [value]).map(normalize);
+        params.p_state = null;
+        params.p_state_in = vals;
       }
 
       if (op === "not_in") {
-        params.p_state_not_in = value.map(normalize);
+        const vals = (Array.isArray(value) ? value : [value]).map(normalize);
+
+        params.p_state_not_in = params.p_state_not_in
+          ? [...params.p_state_not_in, ...vals]
+          : vals;
       }
     }
 
     if (field === "city") {
-      if (op === "=") params.p_city = value;
+      const normalizeCity = (v: string) => v.toLowerCase().trim();
 
-      if (op === "!=") {
-        const val = String(value).toLowerCase();
-        params.p_exclude_city_in = params.p_exclude_city_in
-          ? [...params.p_exclude_city_in, val]
-          : [val];
+      if (op === "=") {
+        params.p_city = normalizeCity(value);
+        params.p_city_in = null;
+      }
+
+      if (op === "in") {
+        params.p_city = null;
+        params.p_city_in = (Array.isArray(value) ? value : [value]).map(
+          normalizeCity,
+        );
       }
 
       if (op === "not_in") {
-        const vals = Array.isArray(value)
-          ? value.map((v: string) => v.toLowerCase())
-          : [String(value).toLowerCase()];
+        const vals = (Array.isArray(value) ? value : [value]).map((v: string) =>
+          v.toLowerCase().trim(),
+        );
 
         params.p_exclude_city_in = params.p_exclude_city_in
           ? [...params.p_exclude_city_in, ...vals]
@@ -435,33 +581,87 @@ async function mapDSLToRPC(dsl: any) {
     if (field === "address") {
       if (op === "=") {
         params.p_address = value;
+        params.p_street_in = null;
+        params.p_exclude_street_in = null; // add this
       }
 
       if (op === "!=") {
         params.p_exclude_address = value;
       }
 
-      // ✅ NEW
       if (op === "like") {
-        params.p_address = value.includes("%") ? value : `%${value}%`;
+        const clean = String(value)
+          .replace(/[%_]/g, "") // remove SQL wildcards
+          .toLowerCase()
+          .trim();
+
+        params.p_street_in = appendArray(params.p_street_in, [clean]);
+      }
+
+      if (op === "in") {
+        const vals = (Array.isArray(value) ? value : [value]).map((v: string) =>
+          v.toLowerCase().trim(),
+        );
+        params.p_street_in = appendArray(params.p_street_in, vals);
+      }
+
+      if (op === "not_in") {
+        const vals = (Array.isArray(value) ? value : [value]).map((v: string) =>
+          v.toLowerCase().trim(),
+        );
+
+        params.p_exclude_street_in = params.p_exclude_street_in
+          ? [...params.p_exclude_street_in, ...vals]
+          : vals;
       }
 
       if (op === "not_like") {
-        params.p_exclude_address = value.includes("%") ? value : `%${value}%`;
+        const clean = String(value).replace(/[%_]/g, "").toLowerCase().trim();
+
+        params.p_exclude_street_in = appendArray(params.p_exclude_street_in, [
+          clean,
+        ]);
       }
     }
 
     if (field === "type") {
-      if (op === "=") params.p_type = value;
+      const normalizeStr = (v: string) => v.toLowerCase().trim();
 
-      if (op === "!=") params.p_exclude_type = value;
+      if (op === "=") {
+        params.p_type = normalizeStr(value);
+        params.p_type_in = null;
+      }
+
+      if (op === "!=") {
+        const val = normalizeStr(value);
+
+        params.p_exclude_type_in = params.p_exclude_type_in
+          ? [...params.p_exclude_type_in, val]
+          : [val];
+      }
 
       if (op === "like") {
-        params.p_type = value.includes("%") ? value : `%${value}%`;
+        const val = normalizeStr(value);
+        params.p_type = val.includes("%") ? val : `%${val}%`;
+        params.p_type_in = null; // prevent conflict
       }
 
       if (op === "not_like") {
-        params.p_exclude_type = value.includes("%") ? value : `%${value}%`;
+        const val = normalizeStr(value);
+        params.p_exclude_type = val.includes("%") ? val : `%${val}%`;
+      }
+
+      if (op === "in") {
+        params.p_type = null;
+        params.p_type_in = (Array.isArray(value) ? value : [value]).map(
+          normalizeStr,
+        );
+      }
+
+      if (op === "not_in") {
+        params.p_exclude_type_in = (Array.isArray(value) ? value : [value]).map(
+          normalizeStr,
+        );
       }
     }
 
@@ -507,30 +707,61 @@ async function mapDSLToRPC(dsl: any) {
     }
 
     if (field === "status") {
-      const normalize = (v: string) =>
-        v.charAt(0).toUpperCase() + v.slice(1).toLowerCase();
+      const normalize = (v: string) => normalizeStatusValue(v);
 
+      // ----------------------------------
+      // "=" → SINGLE OR PROMOTE TO IN
+      // ----------------------------------
       if (op === "=") {
-        params.p_status = normalize(value);
+        const val = normalize(value);
+
+        if (params.p_status && params.p_status !== val) {
+          // 🔥 convert single → IN
+          params.p_status_in = [params.p_status, val];
+          params.p_status = null;
+        } else if (params.p_status_in) {
+          // 🔥 append if already IN
+          if (!params.p_status_in.includes(val)) {
+            params.p_status_in.push(val);
+          }
+        } else {
+          params.p_status = val;
+        }
       }
 
+      // ----------------------------------
+      // "!=" → ALWAYS ARRAY
+      // ----------------------------------
       if (op === "!=") {
         const val = normalize(value);
+
         params.p_status_not_in = params.p_status_not_in
           ? [...params.p_status_not_in, val]
           : [val];
       }
 
+      // ----------------------------------
+      // "in"
+      // ----------------------------------
       if (op === "in") {
+        params.p_status = null; // prevent conflict
+
         params.p_status_in = Array.isArray(value)
           ? value.map(normalize)
           : [normalize(value)];
       }
 
+      // ----------------------------------
+      // "not_in"
+      // ----------------------------------
       if (op === "not_in") {
-        params.p_status_not_in = Array.isArray(value)
+        const vals = Array.isArray(value)
           ? value.map(normalize)
           : [normalize(value)];
+
+        params.p_status_not_in = params.p_status_not_in
+          ? [...params.p_status_not_in, ...vals]
+          : vals;
       }
     }
   }
@@ -712,18 +943,26 @@ export async function GET(req: Request) {
     const rawSearch = searchParams.get("search") || "";
     const queryText = searchParams.get("query");
 
-    const aiDetected = queryText ? isAiQuery(queryText) : false;
+    // 🔥 UNIFY INPUT
+    const userInput = queryText || rawSearch;
 
-    const aiTriggered = Boolean(queryText && aiDetected);
+    // 🔥 ALWAYS RUN AI DETECTION
+    const aiDetected = isAiQuery(userInput);
 
-    const search = rawSearch || (queryText && !aiDetected ? queryText : "");
+    // 🔥 DECIDE MODE
+    const aiTriggered = Boolean(userInput && aiDetected);
+
+    // 🔥 ROUTING
+    const search = !aiTriggered ? userInput : "";
 
     console.log("🧾 Search Parameter Resolution:", {
       rawSearch,
       queryText,
+      userInput,
+      aiDetected,
+      aiTriggered,
       finalSearchUsed: search,
     });
-
     const page = Number(searchParams.get("page")) || 1;
     const limit = Number(searchParams.get("limit")) || 9;
     const offset = (page - 1) * limit;
@@ -749,7 +988,7 @@ export async function GET(req: Request) {
       // ------------------------------------------
       // 1. AI → DSL
       // ------------------------------------------
-      const dsl = await extractDSL(queryText!);
+      const dsl = await extractDSL(userInput);
 
       if (!dsl) {
         console.warn("❌ DSL parsing failed");
@@ -778,6 +1017,9 @@ export async function GET(req: Request) {
           p_radius_m: rpcParams.p_radius_m,
 
           p_type: rpcParams.p_type,
+          p_type_in: rpcParams.p_type_in,
+          p_exclude_type_in: rpcParams.p_exclude_type_in,
+
           p_min_price: rpcParams.p_min_price,
           p_max_price: rpcParams.p_max_price,
 
@@ -788,6 +1030,7 @@ export async function GET(req: Request) {
           p_city: rpcParams.p_city,
           p_state: rpcParams.p_state,
 
+          p_city_in: rpcParams.p_city_in,
           p_state_in: rpcParams.p_state_in,
           p_state_not_in: rpcParams.p_state_not_in,
 
@@ -803,6 +1046,9 @@ export async function GET(req: Request) {
           p_not_max_cap_rate: rpcParams.p_not_max_cap_rate,
 
           p_exclude_city_in: rpcParams.p_exclude_city_in,
+
+          p_street_in: rpcParams.p_street_in, // ✅ ADD
+          p_exclude_street_in: rpcParams.p_exclude_street_in, // ✅ ADD
 
           p_status: rpcParams.p_status,
           p_status_in: rpcParams.p_status_in,

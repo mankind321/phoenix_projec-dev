@@ -63,6 +63,8 @@ interface Property {
 const MAP_CONTAINER_STYLE: React.CSSProperties = {
   width: "100%",
   height: "100%",
+  position: "relative",
+  overflow: "hidden",
 };
 
 // -------------------------------
@@ -495,13 +497,16 @@ export default function PropertyCardTable() {
   return (
     <div className="w-11/12 mx-auto mt-6 space-y-4">
       {/* HEADER */}
-      <div className="flex flex-col lg:flex-row justify-between items-center bg-white">
-        <div>
-          <div className="flex items-center gap-2">
-            <Building className="w-6 h-6 text-gray-700" />
-            <h2 className="text-xl font-semibold">Search Listings</h2>
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-white w-full">
+        <div className="flex-1 min-w-[250px]">
+          <div className="flex items-center gap-2 flex-wrap">
+            <Building className="w-6 h-6 text-gray-700 shrink-0" />
+            <h2 className="text-xl font-semibold whitespace-nowrap">
+              Search Listings
+            </h2>
           </div>
-          <p className="text-sm text-gray-500">
+
+          <p className="text-sm text-gray-500 whitespace-normal max-w-[500px]">
             View and search available properties.
           </p>
         </div>
@@ -509,9 +514,9 @@ export default function PropertyCardTable() {
         {/* SEARCH BAR */}
         <div
           ref={searchWrapperRef}
-          className="flex gap-3 items-center relative"
+          className="flex flex-col lg:flex-row gap-2 w-full lg:w-auto lg:items-center lg:justify-end"
         >
-          <div className="relative">
+          <div className="relative w-full lg:flex-1 min-w-0">
             <Input
               placeholder="Find properties by name, city, or even natural language…"
               value={searchInput}
@@ -530,7 +535,7 @@ export default function PropertyCardTable() {
               onKeyDown={(e) => {
                 if (e.key === "Enter") triggerSearch();
               }}
-              className="w-[700px] text-base"
+              className="w-full lg:w-[400px] xl:w-[500px] text-base"
             />
 
             {/* Recent search dropdown */}
@@ -573,10 +578,10 @@ export default function PropertyCardTable() {
             )}
           </div>
 
-          <div className="flex items-center gap-2 mt-2">
+          <div className="flex gap-2 w-full lg:w-auto justify-end mt-2 lg:mt-0 shrink-0">
             <Button
               onClick={triggerSearch}
-              className="bg-blue-700 hover:bg-blue-500 text-white px-6 flex items-center gap-2"
+              className="bg-blue-700 hover:bg-blue-500 text-white px-6 flex items-center gap-2 w-full sm:w-auto"
             >
               <Search size={16} />
               Search
@@ -586,7 +591,7 @@ export default function PropertyCardTable() {
               variant="outline"
               onClick={clearSearch}
               disabled={!searchInput && !search}
-              className="flex items-center gap-2 bg-red-500 text-white hover:bg-red-700 hover:text-white"
+              className="flex items-center gap-2 bg-red-500 text-white hover:bg-red-700 hover:text-white w-full sm:w-auto"
             >
               <X size={16} />
               Clear
@@ -598,7 +603,7 @@ export default function PropertyCardTable() {
       {/* MAIN LAYOUT */}
       <div className="flex h-[650px] border rounded-md overflow-hidden bg-white">
         {/* SIDEBAR */}
-        <div className="relative w-full md:w-[35%] lg:w-[32%] border-r">
+        <div className="relative flex-[0_0_clamp(280px,35%,420px)] border-r">
           <div className="overflow-y-auto h-[calc(650px-60px)]">
             <div className="px-4 py-2 border-b text-sm bg-gray-50 flex justify-between">
               <span>{isLoading ? "Loading…" : `${total} results`}</span>
@@ -732,91 +737,93 @@ export default function PropertyCardTable() {
         </div>
 
         {/* MAP */}
-        <div className="hidden md:block flex-1">
-          {isMapLoaded && (
-            <GoogleMap
-              mapContainerStyle={MAP_CONTAINER_STYLE}
-              zoom={6}
-              onLoad={onMapLoad}
-              options={{
-                streetViewControl: false,
-                mapTypeControl: true,
-                fullscreenControl: true,
-              }}
-            >
-              <MarkerClusterer
+        <div className="hidden md:flex flex-1 min-w-[400px]">
+          <div className="w-full h-full relative">
+            {isMapLoaded && (
+              <GoogleMap
+                mapContainerStyle={MAP_CONTAINER_STYLE}
+                zoom={6}
+                onLoad={onMapLoad}
                 options={{
-                  gridSize: 60,
-                  minimumClusterSize: 3,
-                  zoomOnClick: true,
-                  averageCenter: true,
-                  maxZoom: 15,
-                  imagePath:
-                    "https://developers.google.com/maps/documentation/javascript/examples/markerclusterer/m",
+                  streetViewControl: false,
+                  mapTypeControl: true,
+                  fullscreenControl: true,
                 }}
               >
-                {(clusterer: any) => (
-                  <>
-                    {data
-                      .filter((p) => p.latitude && p.longitude)
-                      .map((p) => (
-                        <Marker
-                          key={p.property_id}
-                          clusterer={clusterer}
-                          position={{
-                            lat: p.latitude!,
-                            lng: p.longitude!,
-                          }}
-                          onClick={() => handleMarkerClick(p)}
-                        />
-                      ))}
-                  </>
-                )}
-              </MarkerClusterer>
+                <MarkerClusterer
+                  options={{
+                    gridSize: 60,
+                    minimumClusterSize: 3,
+                    zoomOnClick: true,
+                    averageCenter: true,
+                    maxZoom: 15,
+                    imagePath:
+                      "https://developers.google.com/maps/documentation/javascript/examples/markerclusterer/m",
+                  }}
+                >
+                  {(clusterer: any) => (
+                    <>
+                      {data
+                        .filter((p) => p.latitude && p.longitude)
+                        .map((p) => (
+                          <Marker
+                            key={p.property_id}
+                            clusterer={clusterer}
+                            position={{
+                              lat: p.latitude!,
+                              lng: p.longitude!,
+                            }}
+                            onClick={() => handleMarkerClick(p)}
+                          />
+                        ))}
+                    </>
+                  )}
+                </MarkerClusterer>
 
-              {selectedProperty &&
-                selectedProperty.latitude &&
-                selectedProperty.longitude && (
-                  <InfoWindow
-                    position={{
-                      lat: selectedProperty.latitude,
-                      lng: selectedProperty.longitude,
-                    }}
-                    onCloseClick={() => setSelectedProperty(null)}
-                  >
-                    <div className="max-w-[220px]">
-                      <div className="text-[10px] font-semibold text-blue-700 uppercase mb-1">
-                        {selectedProperty.status ?? "Status"}
-                      </div>
-                      <div className="font-semibold text-sm mb-1">
-                        {selectedProperty.name}
-                      </div>
-                      <div className="text-xs text-gray-600 mb-2">
-                        {(() => {
-                          const fullAddress = [
-                            selectedProperty.address,
-                            selectedProperty.city,
-                            selectedProperty.state,
-                          ]
-                            .filter((v) => v && v.trim() !== "")
-                            .join(", ");
+                {selectedProperty &&
+                  selectedProperty.latitude &&
+                  selectedProperty.longitude && (
+                    <InfoWindow
+                      position={{
+                        lat: selectedProperty.latitude,
+                        lng: selectedProperty.longitude,
+                      }}
+                      onCloseClick={() => setSelectedProperty(null)}
+                    >
+                      <div className="max-w-[220px]">
+                        <div className="text-[10px] font-semibold text-blue-700 uppercase mb-1">
+                          {selectedProperty.status ?? "Status"}
+                        </div>
+                        <div className="font-semibold text-sm mb-1">
+                          {selectedProperty.name}
+                        </div>
+                        <div className="text-xs text-gray-600 mb-2">
+                          {(() => {
+                            const fullAddress = [
+                              selectedProperty.address,
+                              selectedProperty.city,
+                              selectedProperty.state,
+                            ]
+                              .filter((v) => v && v.trim() !== "")
+                              .join(", ");
 
-                          return fullAddress || "—";
-                        })()}
-                      </div>
+                            return fullAddress || "—";
+                          })()}
+                        </div>
 
-                      <Button
-                        size="sm"
-                        className="w-full bg-blue-700 hover:bg-blue-500 text-white"
-                        onClick={() => handleViewDetails(selectedProperty)}
-                      >
-                        View Details
-                      </Button>
-                    </div>
-                  </InfoWindow>
-                )}
-            </GoogleMap>
-          )}
+                        <Button
+                          size="sm"
+                          className="w-full bg-blue-700 hover:bg-blue-500 text-white"
+                          onClick={() => handleViewDetails(selectedProperty)}
+                        >
+                          View Details
+                        </Button>
+                      </div>
+                    </InfoWindow>
+                  )}
+              </GoogleMap>
+            )}
+          </div>
         </div>
       </div>
       <Dialog open={statusModalOpen} onOpenChange={setStatusModalOpen}>

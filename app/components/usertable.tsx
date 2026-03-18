@@ -568,9 +568,9 @@ export default function UserTable() {
           </div>
 
           {/* SECOND ROW : Action Buttons (Right Aligned) */}
-          <div className="flex justify-end gap-2 w-full">
+          <div className="flex flex-wrap justify-end gap-2 w-full">
             <Button
-              className="bg-blue-600 text-white hover:bg-blue-700 flex items-center gap-2"
+              className="bg-blue-600 text-white hover:bg-blue-700 flex items-center gap-2 w-full sm:w-auto"
               onClick={() => router.push("/dashboard/users/add")}
             >
               <Plus size={18} />
@@ -587,7 +587,7 @@ export default function UserTable() {
                 }
                 setBulkLogoutOpen(true);
               }}
-              className="flex items-center gap-2"
+              className="flex items-center gap-2 w-full sm:w-auto"
             >
               <LogOut size={15} />
               Bulk Logout ({table.getSelectedRowModel().rows.length})
@@ -603,7 +603,7 @@ export default function UserTable() {
                 }
                 setBulkDeleteOpen(true);
               }}
-              className="flex items-center gap-2"
+              className="flex items-center gap-2 w-full sm:w-auto"
             >
               <Trash2 size={15} />
               Delete Selected ({table.getSelectedRowModel().rows.length})
