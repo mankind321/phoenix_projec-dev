@@ -203,6 +203,22 @@ If user intent is singular:
 
 If plural (properties), keep default (20)
 
+STATUS RULES:
+
+Extract status into:
+- "Available"
+- "Leased"
+- "Sold"
+- "Pending"
+- "Off Market"
+- "Occupied"
+- "Under Maintenance"
+- "Not Available"
+
+Example:
+"available properties"
+→ { field: "status", op: "=", value: "Available" }
+
 Return:
 {
   "geo": {
@@ -270,10 +286,15 @@ async function mapDSLToRPC(dsl: any) {
     p_max_price: null,
 
     p_min_cap_rate: null,
-    p_max_cap_rate: null, // ✅ ADD THIS
+    p_max_cap_rate: null,
 
     p_address: null,
     p_exclude_city_in: null,
+
+    // ✅ ADD THESE
+    p_status: null,
+    p_status_in: null,
+    p_status_not_in: null,
   };
 
   if (dsl.geo?.location_text) {
@@ -406,6 +427,31 @@ async function mapDSLToRPC(dsl: any) {
       if (op === "between") {
         params.p_min_cap_rate = value[0];
         params.p_max_cap_rate = value[1];
+      }
+    }
+
+    if (field === "status") {
+      const normalize = (v: string) =>
+        v.charAt(0).toUpperCase() + v.slice(1).toLowerCase();
+
+      if (op === "=") {
+        params.p_status = normalize(value);
+      }
+
+      if (op === "!=") {
+        params.p_status_not_in = [normalize(value)];
+      }
+
+      if (op === "in") {
+        params.p_status_in = Array.isArray(value)
+          ? value.map(normalize)
+          : [normalize(value)];
+      }
+
+      if (op === "not_in") {
+        params.p_status_not_in = Array.isArray(value)
+          ? value.map(normalize)
+          : [normalize(value)];
       }
     }
   }
@@ -670,6 +716,10 @@ export async function GET(req: Request) {
           p_max_cap_rate: rpcParams.p_max_cap_rate,
 
           p_exclude_city_in: rpcParams.p_exclude_city_in,
+
+          p_status: rpcParams.p_status,
+          p_status_in: rpcParams.p_status_in,
+          p_status_not_in: rpcParams.p_status_not_in,
         },
       );
 
