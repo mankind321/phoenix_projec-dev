@@ -12,6 +12,8 @@ import { authOptions } from "@/lib/auth";
 import { Storage } from "@google-cloud/storage";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
+const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+
 // ----------------------------------------------
 // 🔐 Create Supabase Client with HEADER-BASED RLS
 // ----------------------------------------------
@@ -81,6 +83,15 @@ function parseNumericValue(val: any): number | any {
   }
 
   return val;
+}
+
+function normalizePrompt(text: string) {
+  return text
+    .toLowerCase()
+    .replace(/[^\w\s]/g, "") // remove punctuation
+    .replace(/\bproperties?\b/g, "property") // normalize plural
+    .trim()
+    .replace(/\s+/g, " ");
 }
 
 // ----------------------------------------------
@@ -560,6 +571,14 @@ async function mapDSLToRPC(dsl: any) {
         params.p_city_in = null;
       }
 
+      if (op === "!=") {
+        const val = normalizeCity(value);
+
+        params.p_exclude_city_in = params.p_exclude_city_in
+          ? [...params.p_exclude_city_in, val]
+          : [val];
+      }
+
       if (op === "in") {
         params.p_city = null;
         params.p_city_in = (Array.isArray(value) ? value : [value]).map(
@@ -963,6 +982,7 @@ export async function GET(req: Request) {
       aiTriggered,
       finalSearchUsed: search,
     });
+
     const page = Number(searchParams.get("page")) || 1;
     const limit = Number(searchParams.get("limit")) || 9;
     const offset = (page - 1) * limit;
@@ -980,34 +1000,122 @@ export async function GET(req: Request) {
     console.log("🧭 Search mode:", aiTriggered ? "AI" : "TRADITIONAL");
 
     // =======================================================
-    // 🤖 AI MODE (DSL)
+    // 🤖 AI MODE (WITH CACHE)
     // =======================================================
     if (aiTriggered) {
       console.log("🤖 AI search triggered");
 
-      // ------------------------------------------
-      // 1. AI → DSL
-      // ------------------------------------------
-      const dsl = await extractDSL(userInput);
+      const normalized = normalizePrompt(userInput);
 
-      if (!dsl) {
-        console.warn("❌ DSL parsing failed");
+      let dsl: any = null;
 
-        return NextResponse.json({
-          success: false,
-          message: "AI failed to parse query",
-        });
+      // ------------------------------------------
+      // 🔎 1. CACHE LOOKUP
+      // ------------------------------------------
+      const { data: cached } = await supabase
+        .from("ai_query_cache")
+        .select("*")
+        .eq("normalized_prompt", normalized)
+        .maybeSingle();
+
+      const isExpired =
+        cached &&
+        new Date(cached.last_used).getTime() < Date.now() - CACHE_TTL_MS;
+
+      // ------------------------------------------
+      // ⚡ CACHE HIT (FAST PATH)
+      // ------------------------------------------
+      if (cached) {
+        console.log("⚡ Cache HIT");
+
+        dsl = cached.dsl;
+
+        // update usage stats
+        await supabase
+          .from("ai_query_cache")
+          .update({
+            hit_count: (cached.hit_count || 0) + 1,
+            last_used: new Date().toISOString(),
+          })
+          .eq("id", cached.id);
+
+        // ------------------------------------------
+        // 🔄 BACKGROUND REFRESH (NON-BLOCKING)
+        // ------------------------------------------
+        if (isExpired) {
+          console.log("🔄 Cache expired → refreshing in background");
+
+          extractDSL(userInput).then(async (newDsl) => {
+            if (!newDsl) return;
+
+            try {
+              const oldCount = cached?.dsl?.filters?.length || 0;
+              const newCount = newDsl?.filters?.length || 0;
+
+              console.log("🧠 DSL compare:", { oldCount, newCount });
+
+              // ✅ ONLY UPDATE IF BETTER OR EQUAL
+              if (newCount >= oldCount) {
+                await supabase.from("ai_query_cache").upsert(
+                  {
+                    prompt: userInput,
+                    normalized_prompt: normalized,
+                    dsl: newDsl,
+                    last_used: new Date().toISOString(),
+                  },
+                  { onConflict: "normalized_prompt" },
+                );
+
+                console.log("✅ Cache updated (better DSL)");
+              } else {
+                console.log("⏭️ Skipped update (existing DSL is better)");
+              }
+            } catch (err) {
+              console.error("❌ Background refresh failed:", err);
+            }
+          });
+        }
       }
 
       // ------------------------------------------
-      // 2. DSL → RPC PARAMS
+      // ❌ CACHE MISS → CALL AI
+      // ------------------------------------------
+      else {
+        console.log("❌ Cache MISS → calling AI");
+
+        dsl = await extractDSL(userInput);
+
+        if (!dsl) {
+          return NextResponse.json({
+            success: false,
+            message: "AI failed to parse query",
+          });
+        }
+
+        await supabase.from("ai_query_cache").upsert(
+          {
+            prompt: userInput,
+            normalized_prompt: normalized,
+            dsl,
+            last_used: new Date().toISOString(),
+          },
+          { onConflict: "normalized_prompt" },
+        );
+
+        console.log("💾 Saved to cache");
+      }
+
+      console.log("📦 DSL Used:", dsl);
+
+      // ------------------------------------------
+      // 4. DSL → RPC PARAMS
       // ------------------------------------------
       const rpcParams = await mapDSLToRPC(dsl);
 
       console.log("📦 RPC Params Ready:", rpcParams);
 
       // ------------------------------------------
-      // 3. EXECUTE SQL FUNCTION
+      // 5. EXECUTE RPC
       // ------------------------------------------
       const { data, error } = await supabase.rpc(
         "search_properties_by_radius",
@@ -1023,7 +1131,6 @@ export async function GET(req: Request) {
           p_min_price: rpcParams.p_min_price,
           p_max_price: rpcParams.p_max_price,
 
-          // ✅ ADD THESE
           p_not_min_price: rpcParams.p_not_min_price,
           p_not_max_price: rpcParams.p_not_max_price,
 
@@ -1047,8 +1154,8 @@ export async function GET(req: Request) {
 
           p_exclude_city_in: rpcParams.p_exclude_city_in,
 
-          p_street_in: rpcParams.p_street_in, // ✅ ADD
-          p_exclude_street_in: rpcParams.p_exclude_street_in, // ✅ ADD
+          p_street_in: rpcParams.p_street_in,
+          p_exclude_street_in: rpcParams.p_exclude_street_in,
 
           p_status: rpcParams.p_status,
           p_status_in: rpcParams.p_status_in,
@@ -1062,8 +1169,6 @@ export async function GET(req: Request) {
       });
 
       if (error) {
-        console.error("❌ RPC Error:", error);
-
         return NextResponse.json({
           success: false,
           message: error.message,
@@ -1071,7 +1176,7 @@ export async function GET(req: Request) {
       }
 
       // ------------------------------------------
-      // 4. SORTING
+      // 6. SORTING
       // ------------------------------------------
       const SORT_MAP: Record<string, string> = {
         property_created_at: "created_at",
@@ -1081,41 +1186,25 @@ export async function GET(req: Request) {
         name: "name",
       };
 
-      // ------------------------------------------
-      // 🧭 RESOLVE SORT (DSL > QUERY PARAMS)
-      // ------------------------------------------
       let dbField = "created_at";
       let direction: "asc" | "desc" = "desc";
 
-      // 1️⃣ DSL SORT (highest priority)
       if (dsl?.sort?.field) {
         dbField = SORT_MAP[dsl.sort.field] || dsl.sort.field;
         direction = dsl.sort.direction === "asc" ? "asc" : "desc";
-
-        console.log("🧠 Using DSL sort:", { dbField, direction });
-      }
-      // 2️⃣ FALLBACK TO QUERY PARAMS
-      else {
+      } else {
         dbField = SORT_MAP[field] || "created_at";
         direction = sortOrder === "asc" ? "asc" : "desc";
-
-        console.log("📄 Using query sort:", { dbField, direction });
       }
 
-      // ------------------------------------------
-      // 🔄 APPLY SORT
-      // ------------------------------------------
       const sorted = [...(data ?? [])].sort((a: any, b: any) => {
         const valA = a?.[dbField];
         const valB = b?.[dbField];
 
-        // Handle nulls (always last)
-        if (valA == null && valB == null) return 0;
         if (valA == null) return 1;
         if (valB == null) return -1;
 
-        // Numeric vs string safe compare
-        if (typeof valA === "number" && typeof valB === "number") {
+        if (typeof valA === "number") {
           return direction === "asc" ? valA - valB : valB - valA;
         }
 
@@ -1125,28 +1214,18 @@ export async function GET(req: Request) {
       });
 
       // ------------------------------------------
-      // 5. PAGINATION
+      // 7. PAGINATION
       // ------------------------------------------
       const effectiveLimit = dsl?.limit ?? limit;
       const effectiveOffset = dsl?.offset ?? offset;
-
-      console.log("📊 Effective Pagination:", {
-        effectiveLimit,
-        effectiveOffset,
-      });
 
       const paginated = sorted.slice(
         effectiveOffset,
         effectiveOffset + effectiveLimit,
       );
 
-      console.log("📄 Pagination:", {
-        total: sorted.length,
-        returned: paginated.length,
-      });
-
       // ------------------------------------------
-      // 6. SIGN URL
+      // 8. SIGN URL
       // ------------------------------------------
       const signedData = await Promise.all(
         paginated.map(async (p: any) => ({
@@ -1154,8 +1233,6 @@ export async function GET(req: Request) {
           file_url: p.file_url ? await getSignedUrl(p.file_url) : null,
         })),
       );
-
-      console.log("✅ AI response ready");
 
       return NextResponse.json({
         success: true,
@@ -1210,8 +1287,6 @@ export async function GET(req: Request) {
         `status.ilike.%${safe}%`,
       ].join(",");
 
-      console.log("🔍 Traditional Search:", { safe });
-
       query = query.or(orFilter);
     }
 
@@ -1221,7 +1296,6 @@ export async function GET(req: Request) {
     const { data, count, error } = await query;
 
     if (error) {
-      console.error("❌ Traditional Error:", error);
       return NextResponse.json({
         success: false,
         message: error.message,
