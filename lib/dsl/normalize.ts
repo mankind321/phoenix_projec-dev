@@ -1,9 +1,33 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { US_STATES } from "@/lib/constants/states";
 
-export function normalizeStateValue(val: string) {
+export function normalizeStateValue(val: any): string | null {
+  if (!val) return null;
+
+  // ✅ Handle array input (AI sometimes sends arrays)
+  if (Array.isArray(val)) {
+    const results = val
+      .map((v) => normalizeStateValue(v))
+      .filter((v): v is string => !!v);
+
+    return results.length ? results[0] : null; // or return array if needed
+  }
+
+  // ✅ Reject non-string safely
+  if (typeof val !== "string") {
+    console.warn("⚠️ Invalid state value:", val);
+    return null;
+  }
+
   const key = val.toLowerCase().trim();
-  return US_STATES[key] || US_STATES[val.toLowerCase()] || val.toUpperCase();
+
+  return (
+    US_STATES[key] || // "north carolina" → "NC"
+    US_STATES[key.replace(/\s+/g, " ")] || // normalize weird spacing
+    key.length === 2
+      ? key.toUpperCase() // "nc" → "NC"
+      : val.toUpperCase() // fallback
+  );
 }
 
 export function parseNumericValue(val: any): number | any {
