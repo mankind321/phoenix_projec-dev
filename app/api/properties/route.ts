@@ -29,6 +29,9 @@ export async function GET(req: Request) {
 
     console.log("👤 USER:", session.user.id);
 
+    console.log("SUPABASE URL (SERVER):", process.env.SUPABASE_URL);
+    console.log("SUPABASE PUBLIC URL:", process.env.NEXT_PUBLIC_SUPABASE_URL);
+
     const supabase = createRlsClient({
       "x-app-role": session.user.role,
       "x-user-id": session.user.id,
@@ -82,9 +85,7 @@ export async function GET(req: Request) {
       const signed = await Promise.all(
         (data || []).map(async (p: any) => ({
           ...p,
-          file_url: p.file_url
-            ? await getSignedUrl(p.file_url)
-            : null,
+          file_url: p.file_url ? await getSignedUrl(p.file_url) : null,
         })),
       );
 
@@ -169,9 +170,7 @@ export async function GET(req: Request) {
     const signedData = await Promise.all(
       (data || []).map(async (p: any) => ({
         ...p,
-        file_url: p.file_url
-          ? await getSignedUrl(p.file_url)
-          : null,
+        file_url: p.file_url ? await getSignedUrl(p.file_url) : null,
       })),
     );
 
