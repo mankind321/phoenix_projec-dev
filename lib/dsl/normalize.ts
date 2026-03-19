@@ -1,33 +1,56 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { US_STATES } from "@/lib/constants/states";
 
-export function normalizeStateValue(val: any): string | null {
-  if (!val) return null;
+export function normalizeStateValue(
+  val: any
+): { abbr: string | null; full: string | null } {
+  if (!val) return { abbr: null, full: null };
 
   // ✅ Handle array input (AI sometimes sends arrays)
   if (Array.isArray(val)) {
-    const results = val
-      .map((v) => normalizeStateValue(v))
-      .filter((v): v is string => !!v);
-
-    return results.length ? results[0] : null; // or return array if needed
+    for (const v of val) {
+      const result = normalizeStateValue(v);
+      if (result.abbr || result.full) return result;
+    }
+    return { abbr: null, full: null };
   }
 
   // ✅ Reject non-string safely
   if (typeof val !== "string") {
     console.warn("⚠️ Invalid state value:", val);
-    return null;
+    return { abbr: null, full: null };
   }
 
-  const key = val.toLowerCase().trim();
+  const key = val.toLowerCase().trim().replace(/\s+/g, " ");
 
-  return (
-    US_STATES[key] || // "north carolina" → "NC"
-    US_STATES[key.replace(/\s+/g, " ")] || // normalize weird spacing
-    key.length === 2
-      ? key.toUpperCase() // "nc" → "NC"
-      : val.toUpperCase() // fallback
-  );
+  // ✅ Case 1: full name → abbreviation
+  if (US_STATES[key]) {
+    return {
+      abbr: US_STATES[key], // "florida" → "FL"
+      full: key.replace(/\b\w/g, (c) => c.toUpperCase()), // "Florida"
+    };
+  }
+
+  // ✅ Case 2: already abbreviation
+  if (key.length === 2) {
+    const abbr = key.toUpperCase();
+
+    // reverse lookup (optional but ideal)
+    const full =
+      Object.keys(US_STATES).find(
+        (k) => US_STATES[k] === abbr
+      ) || null;
+
+    return {
+      abbr,
+      full: full
+        ? full.replace(/\b\w/g, (c) => c.toUpperCase())
+        : null,
+    };
+  }
+
+  // ❌ Unknown input → do NOT uppercase blindly
+  return { abbr: null, full: null };
 }
 
 export function parseNumericValue(val: any): number | any {

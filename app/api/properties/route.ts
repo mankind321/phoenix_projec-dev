@@ -15,6 +15,7 @@ import { isAiQuery } from "@/lib/ai/aiDetection";
 import { runAISearch } from "@/lib/usecase/aiSearch";
 import { getSignedUrl } from "@/lib/services/storage";
 import { ALLOWED_SORT_FIELDS } from "@/lib/constants/config";
+import { normalizeStateValue } from "@/lib/dsl/normalize";
 
 export async function GET(req: Request) {
   try {
@@ -82,9 +83,7 @@ export async function GET(req: Request) {
       const signed = await Promise.all(
         (data || []).map(async (p: any) => ({
           ...p,
-          file_url: p.file_url
-            ? await getSignedUrl(p.file_url)
-            : null,
+          file_url: p.file_url ? await getSignedUrl(p.file_url) : null,
         })),
       );
 
@@ -134,11 +133,15 @@ export async function GET(req: Request) {
 
       console.log("🧹 SANITIZED INPUT:", safe);
 
+      const { abbr, full } = normalizeStateValue(safe);
+
       const orFilter = [
         `name.ilike.%${safe}%`,
         `address.ilike.%${safe}%`,
         `city.ilike.%${safe}%`,
         `state.ilike.%${safe}%`,
+        ...(full ? [`state.ilike.%${full}%`] : []),
+        ...(abbr ? [`state.ilike.%${abbr}%`] : []), // ✅ CRITICAL
         `type.ilike.%${safe}%`,
         `status.ilike.%${safe}%`,
       ].join(",");
@@ -169,9 +172,7 @@ export async function GET(req: Request) {
     const signedData = await Promise.all(
       (data || []).map(async (p: any) => ({
         ...p,
-        file_url: p.file_url
-          ? await getSignedUrl(p.file_url)
-          : null,
+        file_url: p.file_url ? await getSignedUrl(p.file_url) : null,
       })),
     );
 
