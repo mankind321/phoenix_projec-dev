@@ -50,7 +50,13 @@ export function validateAndSanitizeDSL(dsl: any) {
       if (value == null || value === "") continue;
     }
 
-    if (f.field === "state") value = normalizeStateValue(value);
+    if (f.field === "state") {
+      if (Array.isArray(value)) {
+        value = value.map(normalizeStateValue).filter(Boolean);
+      } else {
+        value = normalizeStateValue(value);
+      }
+    }
     if (f.field === "status") value = normalizeStatusValue(value);
     if (!value) continue;
 

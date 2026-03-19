@@ -1,9 +1,7 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { MODEL } from "@/lib/constants/config";
 
-const genAI = new GoogleGenerativeAI(
-  process.env.GOOGLE_GENAI_API_KEY!,
-);
+const genAI = new GoogleGenerativeAI(process.env.GOOGLE_GENAI_API_KEY!);
 
 export async function extractDSL(prompt: string) {
   const model = genAI.getGenerativeModel({ model: MODEL });
@@ -35,9 +33,38 @@ RULES:
 - multiple streets → address in ["..."]
 
 SPECIAL:
-- "TX and NC" → state in ["TX","NC"]
-- "outside TX and NC" → state not_in ["TX","NC"]
-- "not in Charlotte" → city != "Charlotte"
+
+- ALWAYS extract ALL entities mentioned. NEVER drop any value.
+
+- Multiple states MUST ALWAYS be returned as an array:
+  - "Texas and Florida" → state in ["TX","FL"]
+  - "TX and NC" → state in ["TX","NC"]
+  - "in Texas, Florida, and Georgia" → state in ["TX","FL","GA"]
+
+- Convert FULL state names to 2-letter codes:
+  Texas → TX
+  Florida → FL
+  California → CA
+  New York → NY
+  North Carolina → NC
+
+- If MORE THAN ONE state is mentioned:
+  → op MUST be "in"
+  → value MUST be an array
+
+- If excluding multiple states:
+  → op MUST be "not_in"
+  → value MUST be an array
+
+- NEVER return a single state if multiple states are present in the user input.
+
+- Apply the SAME logic for cities:
+  "Charlotte and Dallas" → city in ["Charlotte","Dallas"]
+
+VALIDATION RULE:
+
+- If multiple values are mentioned in the input, the output MUST include ALL of them.
+- Do NOT omit or reduce values.
 
 SORT:
 - highest price → price desc

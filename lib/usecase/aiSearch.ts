@@ -135,12 +135,13 @@ export async function runAISearch(supabase: any, userInput: string) {
   // ------------------------------------------
   else {
     dsl = await extractDSL(userInput);
-
+    console.log("DSL1:", dsl);
     // sanitize
     dsl = validateAndSanitizeDSL(dsl);
-
+    console.log("DSL2:", dsl);
     // fix AI hallucinations
     dsl = fixKnownAIIssues(dsl);
+    console.log("DSL3:", dsl);
 
     // fallback if broken
     if (!dsl || !dsl.filters?.length) {
