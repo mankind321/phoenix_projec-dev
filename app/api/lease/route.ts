@@ -227,6 +227,30 @@ And calculate:
 lease_end_to = current date + duration
 
 --------------------------------------------------
+Location Handling (IMPORTANT)
+--------------------------------------------------
+
+If the user mentions a location such as:
+
+- State (e.g., "Florida", "North Carolina", "TX")
+- City (e.g., "New York", "Los Angeles")
+- Address or partial address
+
+ALWAYS assign it to "property_name".
+
+Examples:
+
+"leases in Florida" → property_name = "Florida"  
+"tenants in North Carolina" → property_name = "North Carolina"  
+"leases in Dallas" → property_name = "Dallas"  
+"leases at 123 Main St" → property_name = "123 Main St"
+
+IMPORTANT:
+- Do NOT create a separate "state" or "city" field
+- Do NOT ignore location information
+- Location must always go into "property_name"
+
+--------------------------------------------------
 Date Interpretation Rules
 --------------------------------------------------
 
