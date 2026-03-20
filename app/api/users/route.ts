@@ -233,10 +233,69 @@ export async function POST(req: Request) {
     });
   } catch (err: any) {
     console.error("❌ POST /api/users:", err);
-    return NextResponse.json(
-      { success: false, message: err.message },
-      { status: 500 },
-    );
+
+    let message = "Unexpected server error";
+
+    // ============================================================
+    // ✅ UNIQUE CONSTRAINT (Postgres 23505)
+    // ============================================================
+    if (err?.code === "23505") {
+      let constraint = err?.constraint;
+
+      // 🔥 fallback if constraint is missing
+      if (!constraint && err?.message) {
+        const match = err.message.match(/constraint "(.+?)"/);
+        if (match) {
+          constraint = match[1];
+        }
+      }
+
+      console.log("⚠️ Unique constraint hit:", constraint);
+
+      switch (constraint) {
+        case "usersacc_email_key":
+          message = "Email already exists";
+          break;
+
+        case "accounts_username_key":
+          message = "Username already exists";
+          break;
+
+        default:
+          // 🔥 fallback using details (extra safety)
+          if (err?.details?.includes("(email)=")) {
+            message = "Email already exists";
+          } else if (err?.details?.includes("(username)=")) {
+            message = "Username already exists";
+          } else {
+            message = "Duplicate record detected";
+          }
+          break;
+      }
+    }
+
+    // ============================================================
+    // ✅ FOREIGN KEY (e.g. invalid manager_id)
+    // ============================================================
+    else if (err?.code === "23503") {
+      message = "Invalid reference (e.g. Manager not found)";
+    }
+
+    // ============================================================
+    // ✅ NOT NULL
+    // ============================================================
+    else if (err?.code === "23502") {
+      message = `Missing required field: ${err?.column || "unknown"}`;
+    }
+
+    // ============================================================
+    // ✅ FALLBACK SAFE MESSAGE
+    // ============================================================
+    else if (err?.message) {
+      message = err.message;
+    }
+
+    return NextResponse.json({ success: false, message }, { status: 400 });
   }
 }
 
