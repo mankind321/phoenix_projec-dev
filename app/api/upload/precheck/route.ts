@@ -6,8 +6,12 @@ import { createClient } from "@supabase/supabase-js";
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
 );
+
+function normalizeFileName(name: string): string {
+  return name.trim().replace(/\s+/g, "_"); // multiple spaces → single underscore
+}
 
 export async function POST(req: Request) {
   try {
@@ -22,7 +26,7 @@ export async function POST(req: Request) {
 
       return NextResponse.json(
         { success: false, message: "Unauthorized" },
-        { status: 401 }
+        { status: 401 },
       );
     }
 
@@ -30,7 +34,11 @@ export async function POST(req: Request) {
 
     console.log("Request body:", body);
 
-    const fileNames: string[] = body.file_names;
+    const rawFileNames: string[] = body.file_names;
+
+    const fileNames = rawFileNames.map(normalizeFileName);
+
+    console.log("Normalized file names:", fileNames);
 
     console.log("File names received:", fileNames);
 
@@ -39,7 +47,7 @@ export async function POST(req: Request) {
 
       return NextResponse.json(
         { success: false, message: "No filenames provided" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -58,7 +66,7 @@ export async function POST(req: Request) {
 
       return NextResponse.json(
         { success: false, message: "Database error" },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
@@ -68,11 +76,10 @@ export async function POST(req: Request) {
       return NextResponse.json(
         {
           success: false,
-          message:
-            "Some files are in FAILED extraction list",
+          message: "Some files are in FAILED extraction list",
           failed_files: failedDocs,
         },
-        { status: 409 }
+        { status: 409 },
       );
     }
 
@@ -88,8 +95,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json(
       { success: false, message: error.message },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
-
