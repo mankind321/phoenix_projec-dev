@@ -269,7 +269,7 @@ export default function LeaseListPage() {
           </h2>
         </div>
         <div className="text-md text-gray-500 whitespace-nowrap">
-          <p>Manage broker contacts.</p>
+          <p>Manage Tenant Informations</p>
 
           <p className="text-md text-gray-400 mt-1">
             Total Tenants:{" "}

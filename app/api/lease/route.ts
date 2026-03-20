@@ -11,6 +11,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { logAuditTrail } from "@/lib/auditLogger";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { normalizeStateValue } from "@/lib/dsl/normalize";
 
 /* ============================================================
    🔐 RLS Supabase Client
@@ -359,11 +360,21 @@ User query: "${prompt}"
 /* ============================================================
    📌 GET HANDLER
 ============================================================ */
+// (only showing modified sections with added logs — everything else unchanged)
+
+/* ============================================================
+   📌 GET HANDLER
+============================================================ */
 export async function GET(req: Request) {
   try {
+    console.log("🟡 Lease API HIT");
+
     const session = await getServerSession(authOptions);
 
+    console.log("👤 Session:", session?.user);
+
     if (!session?.user) {
+      console.warn("⛔ Unauthorized request");
       return NextResponse.json(
         { success: false, message: "Unauthorized" },
         { status: 401 },
@@ -372,15 +383,25 @@ export async function GET(req: Request) {
 
     const user = session.user;
 
+    console.log("👤 User Info:", {
+      id: user.id,
+      role: user.role,
+      accountId: user.accountId,
+    });
+
     const rlsHeaders = {
       "x-app-role": user.role,
       "x-user-id": user.id,
       "x-account-id": user.accountId ?? "",
     };
 
+    console.log("📡 RLS Headers:", rlsHeaders);
+
     const supabase = createRlsClient(rlsHeaders);
 
     const { searchParams } = new URL(req.url);
+
+    console.log("🌐 Raw URL:", req.url);
 
     /* ============================================================
        SEARCH PARAMETER RESOLUTION
@@ -388,6 +409,8 @@ export async function GET(req: Request) {
 
     const rawSearch = searchParams.get("search") || "";
     const queryText = searchParams.get("query");
+
+    console.log("🔎 Raw Params:", { rawSearch, queryText });
 
     const search =
       rawSearch || (queryText && !isAiQuery(queryText) ? queryText : "");
@@ -409,6 +432,8 @@ export async function GET(req: Request) {
     const limit = Number(searchParams.get("limit")) || 20;
     const offset = (page - 1) * limit;
 
+    console.log("📄 Pagination:", { page, limit, offset });
+
     /* ============================================================
        SORTING
     ============================================================ */
@@ -419,6 +444,8 @@ export async function GET(req: Request) {
 
     const field = ALLOWED_SORT_FIELDS.has(sortField) ? sortField : "created_at";
 
+    console.log("📊 Sorting:", { sortField, field, sortOrder });
+
     /* ============================================================
        AI MODE
     ============================================================ */
@@ -428,38 +455,79 @@ export async function GET(req: Request) {
 
       const filters = await extractLeaseFilters(queryText!);
 
+      console.log("🧠 Extracted Filters:", filters);
+
       let query = supabase
         .from("view_lease_property_with_user")
         .select("*", { count: "exact" });
 
-      if (filters.status) query = query.eq("status", filters.status);
+      console.log("📦 Initial Query (AI)");
 
-      if (filters.tenant) query = query.ilike("tenant", `%${filters.tenant}%`);
+      if (filters.status) {
+        console.log("🔹 Applying status filter:", filters.status);
+        query = query.eq("status", filters.status);
+      }
 
-      if (filters.landlord)
+      if (filters.tenant) {
+        console.log("🔹 Applying tenant filter:", filters.tenant);
+        query = query.ilike("tenant", `%${filters.tenant}%`);
+      }
+
+      if (filters.landlord) {
+        console.log("🔹 Applying landlord filter:", filters.landlord);
         query = query.ilike("landlord", `%${filters.landlord}%`);
+      }
 
       if (filters.property_name) {
         const safe = filters.property_name.replace(/[%_]/g, "");
 
-        query = query.or(
-          `property_name.ilike.%${safe}%,` +
-            `property_address.ilike.%${safe}%,` +
-            `property_type.ilike.%${safe}%`,
-        );
+        const { abbr, full } = normalizeStateValue(safe);
+
+        console.log("🔹 Applying property_name OR filter:", safe);
+        console.log("🧠 State normalization:", { abbr, full });
+
+        const terms = [safe];
+
+        // ✅ expand search terms
+        if (abbr && abbr !== safe) terms.push(abbr);
+        if (full && full !== safe) terms.push(full);
+
+        const conditions: string[] = [];
+
+        for (const term of terms) {
+          conditions.push(`property_name.ilike.%${term}%`);
+          conditions.push(`property_address.ilike.%${term}%`);
+          conditions.push(`property_type.ilike.%${term}%`);
+        }
+
+        query = query.or(conditions.join(","));
       }
 
-      if (filters.lease_start_from)
+      if (filters.lease_start_from) {
+        console.log("🔹 Applying lease_start_from:", filters.lease_start_from);
         query = query.gte("lease_start", filters.lease_start_from);
+      }
 
-      if (filters.lease_end_to)
+      if (filters.lease_end_to) {
+        console.log("🔹 Applying lease_end_to:", filters.lease_end_to);
         query = query.lte("lease_end", filters.lease_end_to);
+      }
+
+      console.log("📊 Applying sort before execution");
 
       query = query.order(field, {
         ascending: sortOrder === "asc",
       });
 
+      console.log("🚀 Executing AI query...");
+
       const { data, count, error } = await query;
+
+      console.log("📊 AI Query Result:", {
+        rows: data?.length ?? 0,
+        total: count ?? 0,
+        error: error?.message ?? null,
+      });
 
       if (error)
         return NextResponse.json({
@@ -490,6 +558,8 @@ export async function GET(req: Request) {
       .from("view_lease_property_with_user")
       .select("*", { count: "exact" });
 
+    console.log("📦 Initial Query (Traditional)");
+
     if (search && search.trim().length > 0) {
       const safe = search
         .trim()
@@ -500,7 +570,6 @@ export async function GET(req: Request) {
       console.log("🔎 Lease Raw Search Input:", search);
       console.log("🔎 Lease Sanitized Search:", safe);
 
-      // tokenize search words
       const tokens = [...new Set(safe.split(" ").filter((t) => t.length > 2))];
 
       console.log("🔎 Lease Search Tokens:", tokens);
@@ -508,6 +577,8 @@ export async function GET(req: Request) {
       const conditions: string[] = [];
 
       for (const token of tokens) {
+        console.log("🔹 Building condition for token:", token);
+
         conditions.push(`tenant.ilike.%${token}%`);
         conditions.push(`landlord.ilike.%${token}%`);
         conditions.push(`property_name.ilike.%${token}%`);
@@ -524,9 +595,13 @@ export async function GET(req: Request) {
       query = query.or(orFilter);
     }
 
+    console.log("📊 Applying sort + pagination");
+
     query = query
       .order(field, { ascending: sortOrder === "asc" })
       .range(offset, offset + limit - 1);
+
+    console.log("🚀 Executing Traditional query...");
 
     const { data, count, error } = await query;
 
