@@ -5,6 +5,15 @@ import {
   normalizeStatusValue,
 } from "./normalize";
 
+export function resolveState(val: any): string | null {
+  if (typeof val === "object" && val !== null) {
+    return val.abbr || val.full || null;
+  }
+
+  const { abbr, full } = normalizeStateValue(val);
+  return abbr || full;
+}
+
 export function validateAndSanitizeDSL(dsl: any) {
   if (!dsl || typeof dsl !== "object") return null;
 
@@ -52,9 +61,9 @@ export function validateAndSanitizeDSL(dsl: any) {
 
     if (f.field === "state") {
       if (Array.isArray(value)) {
-        value = value.map(normalizeStateValue).filter(Boolean);
+        value = value.map(resolveState).filter((v) => v !== null);
       } else {
-        value = normalizeStateValue(value);
+        value = resolveState(value);
       }
     }
     if (f.field === "status") value = normalizeStatusValue(value);

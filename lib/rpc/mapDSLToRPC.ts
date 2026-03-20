@@ -1,9 +1,9 @@
 import { US_STATES } from "../constants/states";
 import {
-  normalizeStateValue,
   normalizeStatusValue,
   parseNumericValue,
 } from "../dsl/normalize";
+import { resolveState } from "../dsl/validateDSL";
 import { geocodeLocation } from "../services/geocode";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -166,7 +166,7 @@ export async function mapDSLToRPC(dsl: any) {
     }
 
     if (field === "state") {
-      const normalize = (v: string) => normalizeStateValue(v);
+      const normalize = (v: string) => resolveState(v);
 
       if (op === "=") {
         params.p_state = normalize(value);

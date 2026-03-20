@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { normalizeStateValue, normalizeStatusValue } from "@/lib/dsl/normalize";
+import { normalizeStatusValue } from "@/lib/dsl/normalize";
+import { resolveState } from "../dsl/validateDSL";
 
 export function fixKnownAIIssues(dsl: any) {
   if (!dsl?.filters) return dsl;
@@ -54,12 +55,21 @@ export function fixKnownAIIssues(dsl: any) {
     // ----------------------------------
     // 🌎 STATE FIXES
     // ----------------------------------
-    if (f.field === "state" && typeof f.value === "string") {
-      const fixed = normalizeStateValue(f.value);
+    if (f.field === "state") {
+      if (Array.isArray(f.value)) {
+        const resolved = f.value.map(resolveState).filter((v: null) => v !== null);
 
-      if (fixed !== f.value) {
-        console.log("🛠️ Fixing state:", f.value, "→", fixed);
-        f.value = fixed;
+        if (resolved.length > 0) {
+          console.log("🛠️ Fixing state array:", f.value, "→", resolved);
+          f.value = resolved;
+        }
+      } else {
+        const resolved = resolveState(f.value);
+
+        if (resolved && resolved !== f.value) {
+          console.log("🛠️ Fixing state:", f.value, "→", resolved);
+          f.value = resolved; // ✅ always string
+        }
       }
     }
 
