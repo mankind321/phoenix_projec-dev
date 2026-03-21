@@ -220,6 +220,7 @@ export default function AuditTrailDashboard() {
       {/* 🧭 FILTER SECTION (NO CARD) */}
       {/* ====================== */}
       <div>
+        {/* Header */}
         <div>
           <div className="flex items-center gap-2">
             <Cog className="w-6 h-6 text-gray-700" />
@@ -233,6 +234,7 @@ export default function AuditTrailDashboard() {
           </p>
         </div>
 
+        {/* ROW 1 */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3 pt-3 mt-3">
           {/* 🔍 Search */}
           <div>
@@ -244,7 +246,7 @@ export default function AuditTrailDashboard() {
             />
           </div>
 
-          {/* ⚙️ Action Filter */}
+          {/* ⚙️ Action */}
           <div>
             <p className="text-sm font-medium text-gray-600 mb-1">Action</p>
             <div className="mt-3">
@@ -256,7 +258,9 @@ export default function AuditTrailDashboard() {
                   <SelectItem value="all">All Actions</SelectItem>
                   <SelectItem value="CREATE">Create</SelectItem>
                   <SelectItem value="UPDATE">Update</SelectItem>
-                  <SelectItem value="UPLOAD_INIT">Upload Initialized</SelectItem>
+                  <SelectItem value="UPLOAD_INIT">
+                    Upload Initialized
+                  </SelectItem>
                   <SelectItem value="UPLOAD">Upload</SelectItem>
                   <SelectItem value="DELETE">Delete</SelectItem>
                   <SelectItem value="VIEW">View</SelectItem>
@@ -269,29 +273,27 @@ export default function AuditTrailDashboard() {
             </div>
           </div>
 
-          {/* 👤 User Filter */}
+          {/* 👤 User */}
           {session?.user?.role !== "Agent" && (
             <div>
               <p className="text-sm font-medium text-gray-600 mb-1">User</p>
-              <div className="mt-3">
-                <Select value={userInput} onValueChange={setUserInput}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="All Users" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Users</SelectItem>
-                    {users.map((u) => (
-                      <SelectItem key={u.userId} value={String(u.userId)}>
-                        {u.fullName || u.username}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              <Select value={userInput} onValueChange={setUserInput}>
+                <SelectTrigger>
+                  <SelectValue placeholder="All Users" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Users</SelectItem>
+                  {users.map((u) => (
+                    <SelectItem key={u.userId} value={String(u.userId)}>
+                      {u.fullName || u.username}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           )}
 
-          {/* Export button */}
+          {/* Export */}
           <div className="flex items-end justify-end">
             <Button
               className="bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-2"
@@ -300,7 +302,10 @@ export default function AuditTrailDashboard() {
               <Download className="w-4 h-4" /> Export Log
             </Button>
           </div>
+        </div>
 
+        {/* ROW 2: DATE FILTER INLINE */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mt-3">
           {/* 📅 Date Preset */}
           <div>
             <p className="text-sm font-medium text-gray-600 mb-1">
@@ -328,35 +333,36 @@ export default function AuditTrailDashboard() {
             </div>
           </div>
 
-          {/* Custom Date Range */}
-          {datePreset === "custom" && (
-            <>
-              <div>
-                <p className="text-sm font-medium text-gray-600 mb-1">From</p>
-                <Input
-                  type="date"
-                  value={fromDateInput ?? ""}
-                  onChange={(e) => {
-                    setFromDateInput(e.target.value);
-                    setPage(1);
-                  }}
-                />
-              </div>
+          {/* From */}
+          <div>
+            <p className="text-sm font-medium text-gray-600 mb-1">From</p>
+            <Input
+              type="date"
+              value={fromDateInput ?? ""}
+              disabled={datePreset !== "custom"}
+              onChange={(e) => {
+                setFromDateInput(e.target.value);
+                setPage(1);
+              }}
+            />
+          </div>
 
-              <div>
-                <p className="text-sm font-medium text-gray-600 mb-1">To</p>
-                <Input
-                  type="date"
-                  value={toDateInput ?? ""}
-                  onChange={(e) => {
-                    setToDateInput(e.target.value);
-                    setPage(1);
-                  }}
-                />
-              </div>
-            </>
-          )}
+          {/* To */}
+          <div>
+            <p className="text-sm font-medium text-gray-600 mb-1">To</p>
+            <Input
+              type="date"
+              value={toDateInput ?? ""}
+              disabled={datePreset !== "custom"}
+              onChange={(e) => {
+                setToDateInput(e.target.value);
+                setPage(1);
+              }}
+            />
+          </div>
         </div>
+
+        {/* ACTION BUTTONS */}
         <div className="flex justify-end gap-3 mt-4">
           <Button
             onClick={applyFilters}
