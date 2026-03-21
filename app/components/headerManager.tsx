@@ -210,7 +210,9 @@ export const TopHeaderManager: React.FC = () => {
       {/* Logo */}
       <div className="flex items-center gap-3 px-5 py-5 border-b border-gray-200">
         <div className="w-12 h-12 bg-blue-600 rounded-md flex items-center justify-center">
-          <Building2 className="w-8 h-8 text-white" />
+          <div className="m-6">
+            <Building2 className="w-10 h-10 text-white" />
+          </div>
         </div>
         <div className="flex flex-col leading-tight">
           <h1 className="text-lg font-semibold text-black">
