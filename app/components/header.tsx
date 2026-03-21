@@ -4,11 +4,7 @@ import * as React from "react";
 import { useSession, signOut } from "next-auth/react";
 import { useRouter, usePathname } from "next/navigation";
 
-import {
-  Avatar,
-  AvatarFallback,
-  AvatarImage,
-} from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 import {
   //CircleGauge,
@@ -51,7 +47,7 @@ export const TopHeader: React.FC = () => {
         if (!profilePath) return;
 
         const res = await fetch(
-          `/api/gcp/getSignedUrl?path=${encodeURIComponent(profilePath)}&ts=${Date.now()}`
+          `/api/gcp/getSignedUrl?path=${encodeURIComponent(profilePath)}&ts=${Date.now()}`,
         );
 
         const data = await res.json();
@@ -77,7 +73,7 @@ export const TopHeader: React.FC = () => {
   const displayName =
     firstName || lastName
       ? `${firstName} ${lastName}`.trim()
-      : session?.user?.username ?? "Guest";
+      : (session?.user?.username ?? "Guest");
 
   const userInitials = (firstName || session?.user?.username || "G")
     .split(" ")
@@ -99,7 +95,7 @@ export const TopHeader: React.FC = () => {
         JSON.stringify({
           accountId: session?.user?.accountId,
           username: session?.user?.username,
-        })
+        }),
       );
 
       // 3️⃣ NextAuth logout
@@ -116,23 +112,46 @@ export const TopHeader: React.FC = () => {
   // Navigation Items
   // --------------------------------------------------
   const navItems = [
-    { label: "Property Search", path: "/dashboard/properties", icon: <Home className="w-4 h-4" /> },
-    { label: "Tenants", path: "/dashboard/leases", icon: <ClipboardList className="w-4 h-4" /> },
-    { label: "Contacts", path: "/dashboard/contact", icon: <Contact className="w-4 h-4" /> },
-    { label: "Documents", path: "/dashboard/documents", icon: <FileText className="w-4 h-4" /> },
-    { label: "Audit Trail", path: "/dashboard/audit-trail", icon: <Activity className="w-4 h-4" /> },
+    {
+      label: "Property Search",
+      path: "/dashboard/properties",
+      icon: <Home className="w-4 h-4" />,
+    },
+    {
+      label: "Tenants",
+      path: "/dashboard/leases",
+      icon: <ClipboardList className="w-4 h-4" />,
+    },
+    {
+      label: "Contacts",
+      path: "/dashboard/contact",
+      icon: <Contact className="w-4 h-4" />,
+    },
+    {
+      label: "Documents",
+      path: "/dashboard/documents",
+      icon: <FileText className="w-4 h-4" />,
+    },
+    {
+      label: "Audit Trail",
+      path: "/dashboard/audit-trail",
+      icon: <Activity className="w-4 h-4" />,
+    },
   ];
 
   return (
     <aside className="sidebar-scroll h-screen w-64 bg-white border-r border-gray-200 flex flex-col">
-      
       {/* Logo */}
       <div className="flex items-center gap-3 px-5 py-5 border-b border-gray-200">
         <div className="w-12 h-12 bg-blue-600 rounded-md flex items-center justify-center">
-          <Building2 className="w-8 h-8 text-white" />
+          <div className="m-6">
+            <Building2 className="w-10 h-10 text-white" />
+          </div>
         </div>
         <div className="flex flex-col leading-tight">
-          <h1 className="text-lg font-semibold text-black">Commercial Property Database</h1>
+          <h1 className="text-lg font-semibold text-black">
+            Commerical Property Database
+          </h1>
           <span className="text-xs text-gray-600">Investment Properties</span>
         </div>
       </div>
@@ -172,8 +191,12 @@ export const TopHeader: React.FC = () => {
                 <AvatarFallback>{userInitials}</AvatarFallback>
               </Avatar>
               <div className="flex flex-col">
-                <span className="font-medium text-gray-800 text-sm">{displayName}</span>
-                <span className="text-xs text-gray-500">{session?.user?.role}</span>
+                <span className="font-medium text-gray-800 text-sm">
+                  {displayName}
+                </span>
+                <span className="text-xs text-gray-500">
+                  {session?.user?.role}
+                </span>
               </div>
             </div>
           </DropdownMenuTrigger>
