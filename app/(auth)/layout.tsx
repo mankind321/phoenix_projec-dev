@@ -11,6 +11,8 @@ import { TopHeaderManager } from "@/app/components/headerManager";
 import { useRealtimeTest } from "@/hooks/useRealtimeTest";
 
 const IDLE_TIMEOUT = 15 * 60 * 1000; // 15 minutes
+const CHECK_INTERVAL = 5000; // check every 5s
+
 const ACTIVITY_KEY = "last-activity";
 const LOGOUT_KEY = "force-logout";
 
@@ -20,6 +22,7 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
 
   const offlineSentRef = useRef(false);
   const onlineSentRef = useRef(false);
+  const logoutInProgressRef = useRef(false);
 
   const lastUserRef = useRef<{
     accountId: string;
@@ -100,24 +103,23 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
   }, [status, session, router, sendOnline]);
 
   // ==========================================
-  // 🧠 TRACK ACTIVITY (CROSS-TAB)
+  // 🧠 TRACK ACTIVITY (STRICT)
   // ==========================================
   useEffect(() => {
     if (!session?.user) return;
 
     const updateActivity = () => {
-      const now = Date.now();
-      localStorage.setItem(ACTIVITY_KEY, now.toString());
+      localStorage.setItem(ACTIVITY_KEY, Date.now().toString());
     };
 
-    const events = ["mousemove", "keydown", "click", "scroll"];
+    // ❌ removed mousemove (too sensitive)
+    const events = ["keydown", "click"];
 
     events.forEach((event) =>
       window.addEventListener(event, updateActivity),
     );
 
-    // Initialize activity on load
-    updateActivity();
+    updateActivity(); // init
 
     return () => {
       events.forEach((event) =>
@@ -127,7 +129,7 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
   }, [session]);
 
   // ==========================================
-  // 🔁 SYNC ACTIVITY ACROSS TABS
+  // 🔁 CROSS TAB LOGOUT SYNC
   // ==========================================
   useEffect(() => {
     const handleStorage = (e: StorageEvent) => {
@@ -137,15 +139,17 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
     };
 
     window.addEventListener("storage", handleStorage);
-
     return () => window.removeEventListener("storage", handleStorage);
   }, []);
 
   // ==========================================
-  // 🚨 LOGOUT FUNCTION (SHARED)
+  // 🚨 LOGOUT FUNCTION (SAFE)
   // ==========================================
   const triggerLogout = useCallback(async () => {
     if (!session?.user) return;
+    if (logoutInProgressRef.current) return;
+
+    logoutInProgressRef.current = true;
 
     if (isLoggingOut()) return;
 
@@ -158,11 +162,16 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
 
     await signOut({ redirect: false });
 
+    // ✅ cleanup (important)
+    localStorage.removeItem(LOGOUT_KEY);
+    sessionStorage.removeItem("isLoggingOut");
+    sessionStorage.removeItem("session-online");
+
     router.replace("/login");
   }, [session, router, sendOffline]);
 
   // ==========================================
-  // ⏱ CHECK IDLE (ON FOCUS / VISIBILITY)
+  // ⏱ CONTINUOUS IDLE CHECK (KEY FIX)
   // ==========================================
   useEffect(() => {
     if (!session?.user) return;
@@ -177,29 +186,17 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
 
       console.log("Idle detected → logging out ALL tabs");
 
-      // 🔥 broadcast logout to all tabs
+      // prevent duplicate broadcast
+      if (localStorage.getItem(LOGOUT_KEY) === "true") return;
+
       localStorage.setItem(LOGOUT_KEY, "true");
 
       triggerLogout();
     };
 
-    const handleVisibility = () => {
-      if (document.visibilityState === "visible") {
-        checkIdle();
-      }
-    };
+    const interval = setInterval(checkIdle, CHECK_INTERVAL);
 
-    const handleFocus = () => {
-      checkIdle();
-    };
-
-    document.addEventListener("visibilitychange", handleVisibility);
-    window.addEventListener("focus", handleFocus);
-
-    return () => {
-      document.removeEventListener("visibilitychange", handleVisibility);
-      window.removeEventListener("focus", handleFocus);
-    };
+    return () => clearInterval(interval);
   }, [session, triggerLogout]);
 
   // ==========================================
