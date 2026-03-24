@@ -285,7 +285,7 @@ export default function AuditTrailDashboard() {
                   <SelectItem value="all">All Users</SelectItem>
                   {users.map((u) => (
                     <SelectItem key={u.userId} value={String(u.userId)}>
-                      {u.fullName || u.username}
+                      {u.fullName + ` - ` + u.role || u.username + ` - ` + u.role}
                     </SelectItem>
                   ))}
                 </SelectContent>
