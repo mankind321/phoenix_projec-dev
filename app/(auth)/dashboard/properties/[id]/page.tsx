@@ -417,12 +417,30 @@ export default function PropertyViewPage({
             <TableBody>
               {contacts.map((c: any) => (
                 <TableRow key={c.contact_assignment_id}>
-                  <TableCell>{display(c.relationship)}</TableCell>
+                  <TableCell>
+                    {display(normalizeBrokerText(c.relationship).join(", "))}
+                  </TableCell>
+
                   <TableCell>{display(c.listing_company)}</TableCell>
-                  <TableCell>{display(c.broker_name)}</TableCell>
-                  <TableCell>{display(c.phone)}</TableCell>
-                  <TableCell>{display(c.email)}</TableCell>
+
+                  <TableCell>
+                    {display(normalizeBrokerText(c.broker_name).join(", "))}
+                  </TableCell>
+
+                  <TableCell>
+                    {display(normalizeBrokerText(c.phone).join(", "))}
+                  </TableCell>
+
+                  <TableCell>
+                    {display(
+                      normalizeBrokerText(c.email)
+                        .map((e) => e.replace(/-/g, ".")) // ✅ restore dots
+                        .join(", "),
+                    )}
+                  </TableCell>
+
                   <TableCell>{display(c.website)}</TableCell>
+
                   <TableCell>{display(c.comments)}</TableCell>
                 </TableRow>
               ))}
@@ -547,4 +565,52 @@ function BadgeCount({
       {value}
     </span>
   );
+}
+
+export function normalizeBrokerText(
+  input: string | null | undefined,
+): string[] {
+  if (!input) return [];
+
+  try {
+    let cleaned = input.trim();
+
+    // Remove outer brackets if present
+    if (cleaned.startsWith("[") && cleaned.endsWith("]")) {
+      cleaned = cleaned.slice(1, -1);
+    }
+
+    // Replace single quotes → double quotes (to make JSON safe)
+    cleaned = cleaned.replace(/'/g, '"');
+
+    // Try parsing as JSON array
+    let arr: string[] = [];
+
+    if (cleaned.includes(",")) {
+      arr = JSON.parse(`[${cleaned}]`);
+    } else {
+      arr = [cleaned];
+    }
+
+    return arr.map(
+      (item) =>
+        item
+          ?.trim()
+          .replace(/^["']|["']$/g, "") // ✅ remove starting/ending quotes
+          .replace(/\./g, "-"), // ✅ replace dot with dash
+    );
+  } catch (err) {
+    console.error("normalizeBrokerText error:", err);
+
+    // fallback (safe split)
+    return input
+      .replace(/^\[|\]$/g, "")
+      .split(",")
+      .map((x) =>
+        x
+          .trim()
+          .replace(/^["']|["']$/g, "")
+          .replace(/\./g, "-"),
+      );
+  }
 }

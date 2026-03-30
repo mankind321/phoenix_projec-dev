@@ -69,18 +69,31 @@ export function useRealtimeTest(
   // 🔁 DUPLICATE LEASE
   async function checkDuplicateLease(fileId: string) {
     try {
+      console.log("[duplicate][lease] checking for fileId:", fileId);
+
       const res = await fetch("/api/check-duplicate/lease", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ file_id: fileId }),
       });
 
+      console.log("[duplicate][lease] response status:", res.status);
+
       const json = await res.json();
 
+      console.log("[duplicate][lease] response json:", json);
+
       if (json.success && json.duplicates?.length > 0) {
+        console.log(
+          "[duplicate][lease] duplicates found:",
+          json.duplicates.length,
+        );
+
         const tenantList = json.duplicates.map(
           (d: any) => d.tenant ?? "Unknown Tenant",
         );
+
+        console.log("[duplicate][lease] tenant list:", tenantList);
 
         const toastId = `dup-lease-${fileId}`;
 
@@ -101,27 +114,47 @@ export function useRealtimeTest(
           </div>,
           { id: toastId, duration: 30000 },
         );
+      } else {
+        console.log(
+          "[duplicate][lease] no duplicates OR success=false:",
+          json.success,
+          json.duplicates,
+        );
       }
     } catch (err) {
-      console.error("[realtime] duplicate lease error:", err);
+      console.error("[duplicate][lease] ERROR:", err);
     }
   }
 
   // 🔁 DUPLICATE PROPERTY
+  // 🔁 DUPLICATE PROPERTY
   async function checkDuplicateProperty(fileId: string) {
     try {
+      console.log("[duplicate][property] checking for fileId:", fileId);
+
       const res = await fetch("/api/check-duplicate/property", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ file_id: fileId }),
       });
 
+      console.log("[duplicate][property] response status:", res.status);
+
       const json = await res.json();
 
+      console.log("[duplicate][property] response json:", json);
+
       if (json.success && json.duplicates?.length > 0) {
+        console.log(
+          "[duplicate][property] duplicates found:",
+          json.duplicates.length,
+        );
+
         const propertyList = json.duplicates.map(
           (d: any) => d.property_name ?? "Unknown Property",
         );
+
+        console.log("[duplicate][property] property list:", propertyList);
 
         const toastId = `dup-prop-${fileId}`;
 
@@ -141,9 +174,15 @@ export function useRealtimeTest(
           </div>,
           { id: toastId, duration: 30000 },
         );
+      } else {
+        console.log(
+          "[duplicate][property] no duplicates OR success=false:",
+          json.success,
+          json.duplicates,
+        );
       }
     } catch (err) {
-      console.error("[realtime] duplicate property error:", err);
+      console.error("[duplicate][property] ERROR:", err);
     }
   }
 
@@ -225,7 +264,7 @@ export function useRealtimeTest(
                     isRentRoll
                       ? checkDuplicateLease(row.file_id)
                       : checkDuplicateProperty(row.file_id);
-                  }, 1500);
+                  }, 5000);
                 }
 
                 if (isRentRoll) {
