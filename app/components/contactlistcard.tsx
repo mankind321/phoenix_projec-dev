@@ -176,147 +176,156 @@ export default function ContactTable() {
   }, [status, page, globalFilter, loadContacts]);
 
   /* ------------------ TABLE COLUMNS ---------------------- */
-  const columns = React.useMemo<ColumnDef<Contact>[]>(
-    () => [
-      {
-        id: "select",
-        header: ({ table }) => (
-          <Can role={["Admin", "Manager"]}>
-            <div className="flex justify-center">
-              <input
-                type="checkbox"
-                className="cursor-pointer"
-                checked={table.getIsAllPageRowsSelected()}
-                onChange={table.getToggleAllPageRowsSelectedHandler()}
-              />
-            </div>
-          </Can>
-        ),
-        cell: ({ row }) => (
-          <Can role={["Admin", "Manager"]}>
-            <div className="flex justify-center">
-              <input
-                type="checkbox"
-                className="cursor-pointer"
-                checked={row.getIsSelected()}
-                disabled={!row.getCanSelect()}
-                onChange={row.getToggleSelectedHandler()}
-              />
-            </div>
-          </Can>
-        ),
-        size: 40,
-        meta: {
-          className: "px-2",
-          headerClassName: "px-2",
-        },
-      },
-
-      {
-        id: "icon",
-        header: "",
-        size: 40,
-        minSize: 40,
-        maxSize: 40,
-        enableSorting: false,
-        cell: () => (
-          <div className="flex justify-center w-[40px]">
-            <Contact2 className="w-4 h-4 text-gray-500 flex-shrink-0" />
+const columns = React.useMemo<ColumnDef<Contact>[]>(
+  () => [
+    {
+      id: "select",
+      header: ({ table }) => (
+        <Can role={["Admin", "Manager"]}>
+          <div className="flex justify-center">
+            <input
+              type="checkbox"
+              className="cursor-pointer"
+              checked={table.getIsAllPageRowsSelected()}
+              onChange={table.getToggleAllPageRowsSelectedHandler()}
+            />
           </div>
-        ),
+        </Can>
+      ),
+      cell: ({ row }) => (
+        <Can role={["Admin", "Manager"]}>
+          <div className="flex justify-center">
+            <input
+              type="checkbox"
+              className="cursor-pointer"
+              checked={row.getIsSelected()}
+              disabled={!row.getCanSelect()}
+              onChange={row.getToggleSelectedHandler()}
+            />
+          </div>
+        </Can>
+      ),
+      size: 40,
+      meta: {
+        className: "px-2",
+        headerClassName: "px-2",
       },
+    },
 
-      {
-        accessorKey: "broker_name",
-        header: ({ column }) => (
-          <Button
-            variant="ghost"
-            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+    {
+      id: "icon",
+      header: "",
+      size: 40,
+      minSize: 40,
+      maxSize: 40,
+      enableSorting: false,
+      cell: () => (
+        <div className="flex justify-center w-[40px]">
+          <Contact2 className="w-4 h-4 text-gray-500 flex-shrink-0" />
+        </div>
+      ),
+    },
+
+    {
+      accessorKey: "broker_name",
+      header: ({ column }) => (
+        <Button
+          variant="ghost"
+          onClick={() =>
+            column.toggleSorting(column.getIsSorted() === "asc")
+          }
+        >
+          Broker Name
+          <ArrowUpDown className="ml-2 h-4 w-4" />
+        </Button>
+      ),
+      size: 200,
+      cell: ({ getValue }) =>
+        display(normalizeText(getValue<string>())),
+    },
+
+    {
+      accessorKey: "listing_company",
+      header: "Listing Company",
+      size: 300,
+      cell: ({ getValue }) =>
+        display(normalizeText(getValue<string>())),
+    },
+
+    {
+      accessorKey: "phone",
+      header: "Phone",
+      size: 150,
+      cell: ({ getValue }) =>
+        display(normalizePhone(getValue<string>())),
+    },
+
+    {
+      accessorKey: "email",
+      header: "Email",
+      size: 220,
+      cell: ({ getValue }) =>
+        display(normalizeEmail(getValue<string>())),
+    },
+
+    {
+      accessorKey: "website",
+      header: "Website",
+      size: 180,
+      cell: ({ row }) =>
+        row.original.website ? (
+          <a
+            href={row.original.website}
+            target="_blank"
+            className="text-blue-600 underline truncate block max-w-[180px]"
           >
-            Broker Name
-            <ArrowUpDown className="ml-2 h-4 w-4" />
-          </Button>
+            {row.original.website}
+          </a>
+        ) : (
+          display(null)
         ),
-        size: 200,
-        cell: ({ getValue }) => display(getValue<string>()),
-      },
+    },
 
-      {
-        accessorKey: "listing_company",
-        header: "Listing Company",
-        size: 300,
-        cell: ({ getValue }) => display(getValue<string>()),
-      },
+    {
+      id: "property_tenant",
+      header: "Property / Tenant",
+      size: 220,
+      accessorFn: (row) =>
+        row.property_name && row.tenant
+          ? `${row.property_name} / ${row.tenant}`
+          : row.property_name || row.tenant || null,
+      cell: ({ getValue }) =>
+        display(normalizeText(getValue<string>())),
+    },
 
-      {
-        accessorKey: "phone",
-        header: "Phone",
-        size: 150,
-        cell: ({ getValue }) => display(getValue<string>()),
-      },
+    {
+      id: "actions",
+      header: () => (
+        <div className="text-right w-[120px] min-w-[120px]">
+          Actions
+        </div>
+      ),
+      cell: ({ row }) => {
+        const item = row.original;
 
-      {
-        accessorKey: "email",
-        header: "Email",
-        size: 220,
-        cell: ({ getValue }) => display(getValue<string>()),
-      },
-
-      {
-        accessorKey: "website",
-        header: "Website",
-        size: 180,
-        cell: ({ row }) =>
-          row.original.website ? (
-            <a
-              href={row.original.website}
-              target="_blank"
-              className="text-blue-600 underline truncate block max-w-[180px]"
+        return (
+          <div className="flex justify-end gap-2 w-[120px] min-w-[120px]">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() =>
+                router.push(`/dashboard/contact/edit?id=${item.contact_id}`)
+              }
             >
-              {row.original.website}
-            </a>
-          ) : (
-            display(null)
-          ),
+              <Eye size={16} /> View
+            </Button>
+          </div>
+        );
       },
-
-      {
-        id: "property_tenant",
-        header: "Property / Tenant",
-        size: 220,
-        accessorFn: (row) =>
-          row.property_name && row.tenant
-            ? `${row.property_name} / ${row.tenant}`
-            : row.property_name || row.tenant || null,
-        cell: ({ getValue }) => display(getValue<string>()),
-      },
-
-      {
-        id: "actions",
-        header: () => (
-          <div className="text-right w-[120px] min-w-[120px]">Actions</div>
-        ),
-        cell: ({ row }) => {
-          const item = row.original;
-
-          return (
-            <div className="flex justify-end gap-2 w-[120px] min-w-[120px]">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() =>
-                  router.push(`/dashboard/contact/edit?id=${item.contact_id}`)
-                }
-              >
-                <Eye size={16} /> View
-              </Button>
-            </div>
-          );
-        },
-      },
-    ],
-    [router],
-  );
+    },
+  ],
+  [router],
+);
 
   React.useEffect(() => {
     if (status !== "authenticated" || !userId) return;
@@ -735,4 +744,52 @@ function display(value?: string | null) {
   }
 
   return value;
+}
+
+function parseArrayString(input?: string | null): string[] {
+  if (!input) return [];
+
+  try {
+    let cleaned = input.trim();
+
+    if (cleaned.startsWith("[") && cleaned.endsWith("]")) {
+      cleaned = cleaned.slice(1, -1);
+    }
+
+    cleaned = cleaned.replace(/'/g, '"');
+
+    if (cleaned.includes(",")) {
+      return JSON.parse(`[${cleaned}]`);
+    }
+
+    return [cleaned];
+  } catch {
+    return input
+      .replace(/^\[|\]$/g, "")
+      .split(",")
+      .map((x) => x.trim());
+  }
+}
+
+function normalizeText(input?: string | null): string {
+  return parseArrayString(input)
+    .map((v) => v.replace(/^["']|["']$/g, "").trim())
+    .join(", ");
+}
+
+function normalizePhone(input?: string | null): string {
+  return parseArrayString(input)
+    .map((v) =>
+      v
+        .replace(/^["']|["']$/g, "")
+        .replace(/\./g, "-")
+        .trim()
+    )
+    .join(", ");
+}
+
+function normalizeEmail(input?: string | null): string {
+  return parseArrayString(input)
+    .map((v) => v.replace(/^["']|["']$/g, "").trim())
+    .join(", ");
 }
