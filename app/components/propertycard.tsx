@@ -669,7 +669,7 @@ export default function PropertyCardTable() {
                         <div className="flex justify-between">
                           <span>Cap Rate</span>
                           <span className="font-medium">
-                            {p.cap_rate ? `${p.cap_rate}%` : "—"}
+                            {p.cap_rate ? `${p.cap_rate}` : "—"}
                           </span>
                         </div>
                       </div>
