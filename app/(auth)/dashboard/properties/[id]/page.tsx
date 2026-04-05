@@ -35,6 +35,7 @@ import {
   CircleX,
   Save,
 } from "lucide-react";
+import { Can } from "@/app/components/can";
 
 interface PropertyData {
   property: any;
@@ -311,35 +312,36 @@ export default function PropertyViewPage({
           <Building2 className="w-7 h-7 text-blue-600" />
           Property Information
         </h1>
-
-        {!isEditing ? (
-          <Button
-            onClick={() => setIsEditing(true)}
-            className="bg-blue-600 hover:bg-blue-700"
-          >
-            <Pencil />
-            Update
-          </Button>
-        ) : (
-          <div className="flex gap-2">
+        <Can role={["Admin", "Manager"]}>
+          {!isEditing ? (
             <Button
-              onClick={handleSave}
-              disabled={saving}
-              className="bg-green-600 hover:bg-green-700 text-white"
+              onClick={() => setIsEditing(true)}
+              className="bg-blue-600 hover:bg-blue-700"
             >
-              <Save />
-              {saving ? "Saving..." : "Save"}
+              <Pencil />
+              Update
             </Button>
+          ) : (
+            <div className="flex gap-2">
+              <Button
+                onClick={handleSave}
+                disabled={saving}
+                className="bg-green-600 hover:bg-green-700 text-white"
+              >
+                <Save />
+                {saving ? "Saving..." : "Save"}
+              </Button>
 
-            <Button
-              variant="outline"
-              onClick={handleCancel}
-              className="bg-red-600 text-white hover:bg-red-700 hover:text-white"
-            >
-              <CircleX /> Cancel
-            </Button>
-          </div>
-        )}
+              <Button
+                variant="outline"
+                onClick={handleCancel}
+                className="bg-red-600 text-white hover:bg-red-700 hover:text-white"
+              >
+                <CircleX /> Cancel
+              </Button>
+            </div>
+          )}
+        </Can>
       </div>
 
       {/* BASIC INFO */}
