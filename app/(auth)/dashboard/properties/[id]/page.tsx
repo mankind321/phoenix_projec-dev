@@ -31,6 +31,9 @@ import {
   Download,
   View,
   Eye,
+  Pencil,
+  CircleX,
+  Save,
 } from "lucide-react";
 
 interface PropertyData {
@@ -62,6 +65,10 @@ export default function PropertyViewPage({
   const [loading, setLoading] = useState(true);
 
   const [downloadingBrochure, setDownloadingBrochure] = useState(false);
+
+  const [isEditing, setIsEditing] = useState(false);
+  const [form, setForm] = useState<any>({});
+  const [saving, setSaving] = useState(false);
 
   const [leaseCounts, setLeaseCounts] = useState({
     active: 0,
@@ -100,8 +107,25 @@ export default function PropertyViewPage({
         const res = await fetch(`/api/properties/${propertyId}`);
         const json = await res.json();
 
-        if (json.success) setData(json.data);
-        else console.error(json.message);
+        if (json.success) {
+          setData(json.data);
+
+          const p = json.data.property;
+
+          setForm({
+            name: p.name,
+            type: p.type,
+            landlord: p.landlord,
+            status: p.status,
+            address: p.address,
+            city: p.city,
+            state: p.state,
+            price: p.price,
+            cap_rate: p.cap_rate,
+            sale_date: p.sale_date,
+            comments: p.comments,
+          });
+        } else console.error(json.message);
       } catch (error) {
         console.error("Error loading property:", error);
       } finally {
@@ -111,6 +135,83 @@ export default function PropertyViewPage({
 
     fetchProperty();
   }, [propertyId]);
+
+  function handleChange(field: string, value: any) {
+    setForm((prev: any) => ({
+      ...prev,
+      [field]: value,
+    }));
+  }
+
+  async function handleSave() {
+    try {
+      setSaving(true);
+
+      const res = await fetch(`/api/properties/${propertyId}`, {
+        method: "PUT", // ✅ MATCH BE
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: form.name ?? null,
+          type: form.type ?? null,
+          landlord: form.landlord ?? null,
+          status: form.status ?? null,
+          address: form.address ?? null,
+          city: form.city ?? null,
+          state: form.state ?? null,
+          price: form.price ? Number(form.price) : null,
+          cap_rate: form.cap_rate ?? null,
+          sale_date: form.sale_date || null,
+          comments: form.comments ?? null,
+        }),
+      });
+
+      const json = await res.json();
+
+      if (!json.success) {
+        toast.error(json.message || "Update failed");
+        return;
+      }
+
+      toast.success("Property Information updated successfully");
+
+      // ✅ Use BE response (source of truth)
+      setData((prev: any) => ({
+        ...prev,
+        property: json.data ?? {
+          ...prev.property,
+          ...form,
+        },
+      }));
+
+      // ✅ Sync form with DB response
+      setForm(json.data ?? form);
+
+      setIsEditing(false);
+    } catch (err) {
+      console.error(err);
+      toast.error("Error saving property");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function handleCancel() {
+    if (!data) return;
+    setForm({
+      name: data.property.name,
+      type: data.property.type,
+      landlord: data.property.landlord,
+      status: data.property.status,
+      address: data.property.address,
+      city: data.property.city,
+      state: data.property.state,
+      price: data.property.price,
+      cap_rate: data.property.cap_rate,
+      sale_date: data.property.sale_date,
+      comments: data.property.comments,
+    });
+    setIsEditing(false);
+  }
 
   function normalizeGsUrl(url: string) {
     if (!url) return "";
@@ -205,25 +306,82 @@ export default function PropertyViewPage({
   return (
     <div className="w-11/12 mx-auto mt-10 space-y-10">
       {/* PAGE TITLE */}
-      <div className="text-center mb-5">
-        <h1 className="text-3xl font-semibold text-gray-900 flex items-center justify-center gap-2">
+      <div className="flex justify-between items-center mb-5">
+        <h1 className="text-3xl font-semibold text-gray-900 flex items-center gap-2">
           <Building2 className="w-7 h-7 text-blue-600" />
           Property Information
         </h1>
+
+        {!isEditing ? (
+          <Button
+            onClick={() => setIsEditing(true)}
+            className="bg-blue-600 hover:bg-blue-700"
+          >
+            <Pencil />
+            Update
+          </Button>
+        ) : (
+          <div className="flex gap-2">
+            <Button
+              onClick={handleSave}
+              disabled={saving}
+              className="bg-green-600 hover:bg-green-700 text-white"
+            >
+              <Save />
+              {saving ? "Saving..." : "Save"}
+            </Button>
+
+            <Button
+              variant="outline"
+              onClick={handleCancel}
+              className="bg-red-600 text-white hover:bg-red-700 hover:text-white"
+            >
+              <CircleX /> Cancel
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* BASIC INFO */}
       <InfoSection icon={<Info />} title="Basic Information">
         <Grid2>
-          <InfoItem label="Name" value={property.name} />
-          <InfoItem label="Type" value={property.type} />
-          <InfoItem label="Landlord" value={property.landlord} />
-          <InfoItem label="Status" value={property.status} />
+          <InfoItem
+            label="Name"
+            value={isEditing ? form.name : property.name}
+            editable={isEditing}
+            onChange={(v) => handleChange("name", v)}
+          />
+
+          <InfoItem
+            label="Type"
+            value={isEditing ? form.type : property.type}
+            editable={isEditing}
+            onChange={(v) => handleChange("type", v)}
+          />
+
+          <InfoItem
+            label="Landlord"
+            value={isEditing ? form.landlord : property.landlord}
+            editable={isEditing}
+            onChange={(v) => handleChange("landlord", v)}
+          />
+
+          <InfoItem
+            label="Status"
+            value={isEditing ? form.status : property.status}
+            editable={isEditing}
+            onChange={(v) => handleChange("status", v)}
+          />
+
           <div>
             {data?.documentFiles?.file_url ? (
               <Button
                 onClick={handleDownloadBrochure}
-                disabled={!data?.documentFiles?.file_url || downloadingBrochure}
+                disabled={
+                  !data?.documentFiles?.file_url ||
+                  downloadingBrochure ||
+                  isEditing // ✅ ADD THIS
+                }
                 className="bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-2 text-lg disabled:bg-gray-400"
               >
                 <Download className="w-5 h-5" />
@@ -241,17 +399,45 @@ export default function PropertyViewPage({
       {/* LOCATION */}
       <InfoSection icon={<Building2 />} title="Property Location">
         <Grid2>
-          <InfoItem label="Address" value={property.address} />
-          <InfoItem label="City" value={property.city} />
-          <InfoItem label="State" value={property.state} />
+          <InfoItem
+            label="Address"
+            value={isEditing ? form.address : property.address}
+            editable={isEditing}
+            onChange={(v) => handleChange("address", v)}
+          />
+
+          <InfoItem
+            label="City"
+            value={isEditing ? form.city : property.city}
+            editable={isEditing}
+            onChange={(v) => handleChange("city", v)}
+          />
+
+          <InfoItem
+            label="State"
+            value={isEditing ? form.state : property.state}
+            editable={isEditing}
+            onChange={(v) => handleChange("state", v)}
+          />
 
           <div className="space-y-1">
             <Label className="text-gray-700 font-medium">Location</Label>
             <a
-              href={`https://www.google.com/maps/search/?api=1&query=${mapsQuery}`}
+              href={
+                isEditing
+                  ? "#"
+                  : `https://www.google.com/maps/search/?api=1&query=${mapsQuery}`
+              }
+              onClick={(e) => {
+                if (isEditing) e.preventDefault();
+              }}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+              className={`inline-flex items-center gap-2 px-4 py-2 rounded-md text-white ${
+                isEditing
+                  ? "bg-gray-400 cursor-not-allowed"
+                  : "bg-blue-600 hover:bg-blue-700"
+              }`}
             >
               <MapPinned className="w-4 h-4" />
               Open in Google Maps
@@ -263,9 +449,28 @@ export default function PropertyViewPage({
       {/* FINANCIAL */}
       <InfoSection icon={<DollarSign />} title="Financial Details">
         <Grid2>
-          <InfoItem label="Sale Price" value={formatUSD(property.price)} />
-          <InfoItem label="Cap Rate" value={property.cap_rate} />
-          <InfoItem label="Sale Date" value={property.sale_date} />
+          <InfoItem
+            label="Sale Price"
+            value={isEditing ? form.price : formatUSD(property.price)}
+            editable={isEditing}
+            onChange={(v) => handleChange("price", v)}
+          />
+
+          <InfoItem
+            label="Cap Rate"
+            value={isEditing ? form.cap_rate : property.cap_rate}
+            editable={isEditing}
+            onChange={(v) =>
+              handleChange("cap_rate", v.replace(/[^0-9./%]/g, ""))
+            }
+          />
+
+          <InfoItem
+            label="Sale Date"
+            value={isEditing ? form.sale_date : property.sale_date}
+            editable={isEditing}
+            onChange={(v) => handleChange("sale_date", v)}
+          />
         </Grid2>
       </InfoSection>
 
@@ -451,9 +656,17 @@ export default function PropertyViewPage({
 
       {/* COMMENTS */}
       <InfoSection icon={<ClipboardList />} title="Comments">
-        <p className="border rounded-md bg-gray-50 px-4 py-3 text-sm text-gray-700">
-          {property.comments || "No comments available."}
-        </p>
+        {isEditing ? (
+          <textarea
+            className="w-full border rounded-md px-3 py-2 text-sm"
+            value={form.comments || ""}
+            onChange={(e) => handleChange("comments", e.target.value)}
+          />
+        ) : (
+          <p className="border rounded-md bg-gray-50 px-4 py-3 text-sm text-gray-700">
+            {property.comments || "No comments available."}
+          </p>
+        )}
       </InfoSection>
 
       {/* AUDIT INFORMATION */}
@@ -519,13 +732,32 @@ function Grid2({ children }: { children: React.ReactNode }) {
   );
 }
 
-function InfoItem({ label, value }: { label: string; value: any }) {
+function InfoItem({
+  label,
+  value,
+  editable = false,
+  onChange,
+}: {
+  label: string;
+  value: any;
+  editable?: boolean;
+  onChange?: (val: string) => void;
+}) {
   return (
     <div className="space-y-1">
       <Label className="text-gray-700 font-medium">{label}</Label>
-      <p className="border rounded-md bg-gray-50 px-3 py-2 text-gray-800 text-sm">
-        {value || "—"}
-      </p>
+
+      {editable ? (
+        <input
+          className="border rounded-md px-3 py-2 text-sm w-full"
+          value={value || ""}
+          onChange={(e) => onChange?.(e.target.value)}
+        />
+      ) : (
+        <p className="border rounded-md bg-gray-50 px-3 py-2 text-gray-800 text-sm">
+          {value || "—"}
+        </p>
+      )}
     </div>
   );
 }
