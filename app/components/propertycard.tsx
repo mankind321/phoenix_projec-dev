@@ -669,7 +669,7 @@ export default function PropertyCardTable() {
                         <div className="flex justify-between">
                           <span>Cap Rate</span>
                           <span className="font-medium">
-                            {p.cap_rate ? `${p.cap_rate}` : "—"}
+                            {formatCapRate(p.cap_rate)}
                           </span>
                         </div>
                       </div>
@@ -871,4 +871,19 @@ export default function PropertyCardTable() {
       </Dialog>
     </div>
   );
+}
+
+function formatCapRate(value: any): string {
+  if (value === null || value === undefined || value === "") return "—";
+
+  const str = String(value).trim();
+
+  // If already contains %, return as-is
+  if (str.includes("%")) return str;
+
+  // If numeric → append %
+  const num = Number(str);
+  if (!isNaN(num)) return `${num}%`;
+
+  return str; // fallback (unexpected format)
 }
