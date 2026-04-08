@@ -52,23 +52,22 @@ export const authOptions: AuthOptions = {
           .from("useraccountaccess")
           .select(
             `
-              userid,
-              username,
-              role,
-              password_hash,
-              license_number,
-              profile_image_url,
-              first_name,
-              middle_name,
-              last_name,
-              accountid,
-              manager_id
-            `,
+            userid,
+            username,
+            role,
+            password_hash,
+            license_number,
+            profile_image_url,
+            first_name,
+            middle_name,
+            last_name,
+            accountid,
+            manager_id
+          `,
           )
           .eq("username", credentials.username)
           .maybeSingle();
 
-        // ❌ USER NOT FOUND
         if (!userRecord) {
           await logAuditTrail({
             userId: null,
@@ -92,7 +91,6 @@ export const authOptions: AuthOptions = {
           userRecord.password_hash,
         );
 
-        // ❌ INVALID PASSWORD
         if (!validPass) {
           await logAuditTrail({
             userId: userRecord.userid,
@@ -109,32 +107,7 @@ export const authOptions: AuthOptions = {
         }
 
         // ----------------------------------------
-        // 4️⃣ Prevent multiple active logins
-        // ----------------------------------------
-        const { data: statusRow } = await supabase
-          .from("accounts_status")
-          .select("account_status")
-          .eq("account_id", userRecord.accountid)
-          .eq("username", userRecord.username)
-          .maybeSingle();
-
-        if (statusRow?.account_status === "online") {
-          await logAuditTrail({
-            userId: userRecord.userid,
-            username: userRecord.username,
-            role: userRecord.role,
-            actionType: "LOGIN_FAILED",
-            tableName: "useraccountaccess",
-            description: "Account already logged in",
-            ipAddress: ip,
-            userAgent,
-          });
-
-          throw new Error("ACCOUNT_ALREADY_LOGGED_IN");
-        }
-
-        // ----------------------------------------
-        // 5️⃣ Audit login success
+        // 4️⃣ Audit login success
         // ----------------------------------------
         await logAuditTrail({
           userId: userRecord.userid,
@@ -148,7 +121,7 @@ export const authOptions: AuthOptions = {
         });
 
         // ----------------------------------------
-        // 6️⃣ Normalize profile image path
+        // 5️⃣ Normalize profile image
         // ----------------------------------------
         let cleanProfilePath: string | undefined =
           userRecord.profile_image_url ?? undefined;
@@ -163,22 +136,45 @@ export const authOptions: AuthOptions = {
         }
 
         // ----------------------------------------
-        // 7️⃣ Generate session identifier
+        // 6️⃣ Generate session_id
         // ----------------------------------------
         const session_id = randomUUID();
 
-        // 🔐 Mark user online immediately
-        await supabase
+        // ----------------------------------------
+        // 7️⃣ 🔒 Limit active sessions (max 3)
+        // ----------------------------------------
+        const { data: sessions } = await supabase
           .from("accounts_status")
-          .update({
-            account_status: "online",
-            session_id: session_id,
-          })
+          .select("session_id, created_at")
           .eq("account_id", userRecord.accountid)
-          .eq("username", userRecord.username);
+          .eq("revoked", false)
+          .order("created_at", { ascending: true });
+
+        if (sessions && sessions.length >= 3) {
+          await supabase
+            .from("accounts_status")
+            .update({ revoked: true })
+            .eq("session_id", sessions[0].session_id);
+        }
 
         // ----------------------------------------
-        // 8️⃣ Return user object
+        // 8️⃣ Create NEW session (IMPORTANT)
+        // ----------------------------------------
+        await supabase.from("accounts_status").insert({
+          session_id,
+          account_id: userRecord.accountid,
+          username: userRecord.username,
+          device_info: userAgent,
+          ip_address: ip,
+          revoked: false,
+          created_at: new Date().toISOString(),
+          expires_at: new Date(
+            Date.now() + 30 * 24 * 60 * 60 * 1000,
+          ).toISOString(),
+        });
+
+        // ----------------------------------------
+        // 9️⃣ Return user
         // ----------------------------------------
         return {
           id: userRecord.userid,
@@ -197,14 +193,8 @@ export const authOptions: AuthOptions = {
     }),
   ],
 
-  // ----------------------------------------
-  // 🔐 Session Strategy
-  // ----------------------------------------
   session: { strategy: "jwt" },
 
-  // ----------------------------------------
-  // 🔁 Callbacks
-  // ----------------------------------------
   callbacks: {
     async jwt({ token, user }) {
       // On login
@@ -215,30 +205,28 @@ export const authOptions: AuthOptions = {
         return token;
       }
 
-      // Validate only if token exists
-      if (token?.user?.accountId && token?.session_id) {
+      // 🔐 Validate session via session_id
+      if (token?.session_id) {
         const { data } = await supabase
           .from("accounts_status")
-          .select("account_status, session_id")
-          .eq("account_id", token.user.accountId)
-          .eq("username", token.user.username)
+          .select("revoked, expires_at")
+          .eq("session_id", token.session_id)
           .maybeSingle();
 
-        if (
-          !data ||
-          data.account_status !== "online" ||
-          data.session_id !== token.session_id
-        ) {
-          token.invalid = true; // mark invalid instead of throwing
+        // ✅ IMPORTANT: allow if not found (race condition)
+        if (!data) {
           return token;
         }
-      }
 
+        // ❌ Only invalidate if explicitly bad
+        if (data.revoked === true || new Date(data.expires_at) < new Date()) {
+          token.invalid = true;
+        }
+      }
       return token;
     },
 
     async session({ session, token }) {
-      // 🔐 If JWT marked invalid → remove user
       if ((token as any).invalid) {
         session.user = undefined as any;
         return session;
@@ -250,9 +238,6 @@ export const authOptions: AuthOptions = {
     },
   },
 
-  // ----------------------------------------
-  // 🧭 Pages
-  // ----------------------------------------
   pages: {
     signIn: "/login",
     error: "/login",

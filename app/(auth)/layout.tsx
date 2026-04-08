@@ -21,7 +21,6 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
 
   const offlineSentRef = useRef(false);
-  const onlineSentRef = useRef(false);
   const logoutInProgressRef = useRef(false);
 
   const lastUserRef = useRef<{
@@ -36,41 +35,20 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
   // ==========================================
   // 🔴 SEND OFFLINE
   // ==========================================
-  const sendOffline = useCallback(
-    async (payload: { accountId: string; username: string }) => {
-      if (offlineSentRef.current) return;
-      offlineSentRef.current = true;
+  const sendOffline = useCallback(async (session_id: string) => {
+    if (offlineSentRef.current) return;
+    offlineSentRef.current = true;
 
-      try {
-        await fetch("/api/auth/update-status-offline", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-      } catch (e) {
-        console.error("Offline send failed", e);
-      }
-    },
-    [],
-  );
-
-  // ==========================================
-  // 🟢 SEND ONLINE
-  // ==========================================
-  const sendOnline = useCallback(
-    (payload: { accountId: string; username: string }) => {
-      if (onlineSentRef.current) return;
-
-      onlineSentRef.current = true;
-
-      fetch("/api/auth/update-status-online", {
+    try {
+      await fetch("/api/auth/update-status-offline", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      }).catch((err) => console.error("Failed to set online:", err));
-    },
-    [],
-  );
+        body: JSON.stringify({ session_id }),
+      });
+    } catch (e) {
+      console.error("Offline send failed", e);
+    }
+  }, []);
 
   // ==========================================
   // 🔐 AUTH STATE
@@ -85,7 +63,6 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
 
     if (session?.user && session.session_id) {
       offlineSentRef.current = false;
-      onlineSentRef.current = false;
 
       lastUserRef.current = {
         accountId: session.user.accountId,
@@ -96,11 +73,10 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
       const wasOnline = sessionStorage.getItem("session-online");
 
       if (!wasOnline && !isLoggingIn()) {
-        sendOnline(lastUserRef.current);
         sessionStorage.setItem("session-online", "true");
       }
     }
-  }, [status, session, router, sendOnline]);
+  }, [status, session, router]);
 
   // ==========================================
   // 🧠 TRACK ACTIVITY (STRICT)
@@ -115,9 +91,7 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
     // ❌ removed mousemove (too sensitive)
     const events = ["keydown", "click"];
 
-    events.forEach((event) =>
-      window.addEventListener(event, updateActivity),
-    );
+    events.forEach((event) => window.addEventListener(event, updateActivity));
 
     updateActivity(); // init
 
@@ -147,6 +121,7 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
   // ==========================================
   const triggerLogout = useCallback(async () => {
     if (!session?.user) return;
+    if (!session?.session_id) return; // ✅ MOVE HERE
     if (logoutInProgressRef.current) return;
 
     logoutInProgressRef.current = true;
@@ -155,14 +130,12 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
 
     sessionStorage.setItem("isLoggingOut", "true");
 
-    await sendOffline({
-      accountId: session.user.accountId,
-      username: session.user.username,
-    });
+    await sendOffline(session.session_id);
 
     await signOut({ redirect: false });
 
-    // ✅ cleanup (important)
+    logoutInProgressRef.current = false;
+
     localStorage.removeItem(LOGOUT_KEY);
     sessionStorage.removeItem("isLoggingOut");
     sessionStorage.removeItem("session-online");
@@ -205,16 +178,15 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (status !== "authenticated" || !session?.user) return;
 
-    const payload = {
-      accountId: session.user.accountId,
-      username: session.user.username,
-    };
-
     const handleBeforeUnload = () => {
       if (!isLoggingOut() && !isLoggingIn()) {
+        if (!session?.session_id) return; // ✅ FIX
+
         navigator.sendBeacon(
           "/api/auth/update-status-offline",
-          JSON.stringify(payload),
+          new Blob([JSON.stringify({ session_id: session.session_id })], {
+            type: "application/json",
+          }),
         );
       }
     };
@@ -225,6 +197,12 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
       window.removeEventListener("beforeunload", handleBeforeUnload);
     };
   }, [status, session]);
+
+  useEffect(() => {
+    if (status === "unauthenticated") {
+      router.replace("/login");
+    }
+  }, [status, router]);
 
   // ==========================================
   // 🔔 REALTIME

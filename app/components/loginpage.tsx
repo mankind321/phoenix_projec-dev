@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { signIn, getSession } from "next-auth/react";
+import { signIn } from "next-auth/react";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
@@ -101,17 +101,16 @@ export function LoginForm() {
       // ---------------------------
       // ✔ LOGIN SUCCESS
       // ---------------------------
-      const session = await getSession();
-      if (!session?.user) {
-        throw new Error("Session not found after login");
-      }
-
-      // 🔑 CLEAR ALL AUTH FLAGS
       sessionStorage.removeItem("isLoggingIn");
       sessionStorage.removeItem("isLoggingOut");
       sessionStorage.removeItem("user-inactive");
 
       toast.success("Login successfully");
+      /**await signIn("credentials", {
+        username,
+        password,
+        callbackUrl: "/dashboard/properties",
+      });**/
       router.push("/dashboard/properties");
     } catch (err) {
       console.error("Login error:", err);

@@ -1,3 +1,4 @@
+// app/api/auth/logout/route.ts
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
@@ -8,11 +9,11 @@ const supabase = createClient(
 
 export async function POST(req: Request) {
   try {
-    const { accountId, username } = await req.json();
+    const { session_id } = await req.json();
 
-    if (!accountId || !username) {
+    if (!session_id) {
       return NextResponse.json(
-        { success: false, message: "Missing accountId or username" },
+        { success: false, message: "Missing session_id" },
         { status: 400 }
       );
     }
@@ -20,23 +21,25 @@ export async function POST(req: Request) {
     const { error } = await supabase
       .from("accounts_status")
       .update({
-        account_status: "offline",
-        session_id: null, // 🔥 invalidates JWT on next check
+        revoked: true, // ✅ mark session as invalid
       })
-      .eq("account_id", accountId)
-      .eq("username", username);
+      .eq("session_id", session_id);
 
     if (error) {
-      console.error("Supabase update error:", error);
+      console.error("Supabase logout error:", error);
       return NextResponse.json(
-        { success: false, message: "Database update failed" },
+        { success: false, message: "Logout failed" },
         { status: 500 }
       );
     }
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({
+      success: true,
+      message: "Logout successful",
+    });
+
   } catch (err) {
-    console.error("Force logout error:", err);
+    console.error("Logout error:", err);
     return NextResponse.json(
       { success: false, message: "Server error" },
       { status: 500 }
