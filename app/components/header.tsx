@@ -86,22 +86,18 @@ export const TopHeader: React.FC = () => {
   // --------------------------------------------------
   const handleLogout = async () => {
     try {
-      // 1️⃣ Mark logout as intentional so layout does not show error toast
       sessionStorage.setItem("isLoggingOut", "true");
 
-      // 2️⃣ Use beacon (fastest + survives immediate tab close)
-      navigator.sendBeacon(
-        "/api/auth/update-status-offline",
-        JSON.stringify({
-          accountId: session?.user?.accountId,
-          username: session?.user?.username,
-        }),
-      );
+      if (session?.session_id) {
+        navigator.sendBeacon(
+          "/api/auth/update-status-offline",
+          new Blob([JSON.stringify({ session_id: session.session_id })], {
+            type: "application/json",
+          }),
+        );
+      }
 
-      // 3️⃣ NextAuth logout
       await signOut({ redirect: false });
-
-      // 4️⃣ Redirect manually
       router.replace("/login");
     } catch (err) {
       console.error("Logout error:", err);

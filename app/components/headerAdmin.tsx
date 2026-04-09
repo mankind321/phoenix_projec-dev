@@ -142,21 +142,18 @@ export const TopHeaderAdmin: React.FC = () => {
   // --------------------------------------------------
   const handleLogout = async () => {
     try {
-      const payload = JSON.stringify({
-        accountId: session?.user?.accountId,
-        username: session?.user?.username,
-      });
-
-      // 1️⃣ Mark logout as intentional (so layout won't show error toast)
       sessionStorage.setItem("isLoggingOut", "true");
 
-      // 2️⃣ Mark user offline instantly & reliably (sendBeacon survives fast tab close)
-      navigator.sendBeacon("/api/auth/update-status-offline", payload);
+      if (session?.session_id) {
+        navigator.sendBeacon(
+          "/api/auth/update-status-offline",
+          new Blob([JSON.stringify({ session_id: session.session_id })], {
+            type: "application/json",
+          }),
+        );
+      }
 
-      // 3️⃣ Sign out user
       await signOut({ redirect: false });
-
-      // 4️⃣ Go to login page
       router.replace("/login");
     } catch (err) {
       console.error("Logout error:", err);

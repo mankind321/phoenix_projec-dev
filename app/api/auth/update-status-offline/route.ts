@@ -1,4 +1,3 @@
-// app/api/auth/logout/route.ts
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
@@ -9,26 +8,27 @@ const supabase = createClient(
 
 export async function POST(req: Request) {
   try {
-    const { session_id } = await req.json();
+    const body = await req.json();
+    console.log("Incoming body:", body);
 
-    if (!session_id) {
+    const session_id = body?.session_id;
+
+    if (!session_id || typeof session_id !== "string") {
       return NextResponse.json(
-        { success: false, message: "Missing session_id" },
+        { success: false, message: "Invalid or missing session_id" },
         { status: 400 }
       );
     }
 
     const { error } = await supabase
       .from("accounts_status")
-      .update({
-        revoked: true, // ✅ mark session as invalid
-      })
+      .update({ revoked: true })
       .eq("session_id", session_id);
 
     if (error) {
       console.error("Supabase logout error:", error);
       return NextResponse.json(
-        { success: false, message: "Logout failed" },
+        { success: false, message: error.message },
         { status: 500 }
       );
     }
@@ -37,7 +37,6 @@ export async function POST(req: Request) {
       success: true,
       message: "Logout successful",
     });
-
   } catch (err) {
     console.error("Logout error:", err);
     return NextResponse.json(
