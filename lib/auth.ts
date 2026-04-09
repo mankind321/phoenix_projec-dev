@@ -150,7 +150,7 @@ export const authOptions: AuthOptions = {
           .eq("revoked", false)
           .order("created_at", { ascending: true });
 
-        if (sessions && sessions.length >= 3) {
+        if (sessions && sessions.length >= 5) {
           await supabase
             .from("accounts_status")
             .update({ revoked: true })

@@ -36,7 +36,7 @@ export async function POST(req: Request) {
       );
     }
 
-    if (activeSessions && activeSessions.length >= 3) {
+    if (activeSessions && activeSessions.length >= 5) {
       const oldestSession = activeSessions[0];
 
       await supabase
