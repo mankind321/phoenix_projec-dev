@@ -369,13 +369,13 @@ export default function PropertyViewPage({
             <TableBody>
               {contacts.map((c: any) => (
                 <TableRow key={c.contact_assignment_id}>
-                  <TableCell>{c.broker_name || "—"}</TableCell>
-                  <TableCell>{c.phone || "—"}</TableCell>
-                  <TableCell>{c.email || "—"}</TableCell>
-                  <TableCell>{c.relationship || "—"}</TableCell>
-                  <TableCell>{c.listing_company || "—"}</TableCell>
-                  <TableCell>{c.website || "—"}</TableCell>
-                  <TableCell>{c.comments || "—"}</TableCell>
+                  <TableCell>{normalizeValue(c.broker_name)}</TableCell>
+                  <TableCell>{normalizeValue(c.phone)}</TableCell>
+                  <TableCell>{normalizeValue(c.email)}</TableCell>
+                  <TableCell>{normalizeValue(c.relationship)}</TableCell>
+                  <TableCell>{normalizeValue(c.listing_company)}</TableCell>
+                  <TableCell>{normalizeValue(c.website)}</TableCell>
+                  <TableCell>{normalizeValue(c.comments)}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -546,4 +546,21 @@ function formatUSD(value: any) {
     style: "currency",
     currency: "USD",
   });
+}
+
+function normalizeValue(value: any): string {
+  if (!value) return "—";
+
+  let str = String(value);
+
+  // Remove brackets and double quotes
+  str = str.replace(/[\[\]"]/g, "");
+
+  // Remove apostrophes ONLY if not between two characters
+  str = str.replace(/(^'|'$|(?<=\s)'|'(?=\s))/g, "");
+
+  // Trim extra spaces
+  str = str.trim();
+
+  return str || "—";
 }

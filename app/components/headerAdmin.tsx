@@ -220,7 +220,7 @@ export const TopHeaderAdmin: React.FC = () => {
         </div>
         <div className="flex flex-col leading-tight">
           <h1 className="text-lg font-semibold text-black">
-            Commerical Property Database
+            Commercial Property Database
           </h1>
           <span className="text-xs text-gray-600">Investment Properties</span>
         </div>

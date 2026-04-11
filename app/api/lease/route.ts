@@ -395,10 +395,7 @@ export async function GET(req: Request) {
 
     const session = await getServerSession(authOptions);
 
-    console.log("👤 Session:", session?.user);
-
     if (!session?.user) {
-      console.warn("⛔ Unauthorized request");
       return NextResponse.json(
         { success: false, message: "Unauthorized" },
         { status: 401 },
@@ -407,46 +404,26 @@ export async function GET(req: Request) {
 
     const user = session.user;
 
-    console.log("👤 User Info:", {
-      id: user.id,
-      role: user.role,
-      accountId: user.accountId,
-    });
-
     const rlsHeaders = {
       "x-app-role": user.role,
       "x-user-id": user.id,
       "x-account-id": user.accountId ?? "",
     };
 
-    console.log("📡 RLS Headers:", rlsHeaders);
-
     const supabase = createRlsClient(rlsHeaders);
-
     const { searchParams } = new URL(req.url);
 
-    console.log("🌐 Raw URL:", req.url);
-
     /* ============================================================
-       SEARCH PARAMETER RESOLUTION
+       SEARCH PARAMS
     ============================================================ */
 
     const rawSearch = searchParams.get("search") || "";
     const queryText = searchParams.get("query");
 
-    console.log("🔎 Raw Params:", { rawSearch, queryText });
-
     const search =
       rawSearch || (queryText && !isAiQuery(queryText) ? queryText : "");
 
     const aiTriggered = Boolean(queryText && isAiQuery(queryText));
-
-    console.log("🧾 Lease Search Resolution:", {
-      rawSearch,
-      queryText,
-      finalSearchUsed: search,
-      aiTriggered,
-    });
 
     /* ============================================================
        PAGINATION
@@ -456,63 +433,38 @@ export async function GET(req: Request) {
     const limit = Number(searchParams.get("limit")) || 20;
     const offset = (page - 1) * limit;
 
-    console.log("📄 Pagination:", { page, limit, offset });
-
     /* ============================================================
        SORTING
     ============================================================ */
 
     const sortField = searchParams.get("sortField") || "created_at";
-
     const sortOrder = searchParams.get("sortOrder") === "asc" ? "asc" : "desc";
-
-    const field = ALLOWED_SORT_FIELDS.has(sortField) ? sortField : "created_at";
-
-    console.log("📊 Sorting:", { sortField, field, sortOrder });
+    const field = ALLOWED_SORT_FIELDS.has(sortField)
+      ? sortField
+      : "created_at";
 
     /* ============================================================
-       AI MODE
+       AI MODE (UNCHANGED except removed CASE)
     ============================================================ */
 
     if (aiTriggered) {
-      console.log("🤖 Lease AI search triggered");
-
       const filters = await extractLeaseFilters(queryText!);
-
-      console.log("🧠 Extracted Filters:", filters);
 
       let query = supabase
         .from("view_lease_property_with_user")
         .select("*", { count: "exact" });
 
-      console.log("📦 Initial Query (AI)");
-
-      if (filters.status) {
-        console.log("🔹 Applying status filter:", filters.status);
-        query = query.eq("status", filters.status);
-      }
-
-      if (filters.tenant) {
-        console.log("🔹 Applying tenant filter:", filters.tenant);
+      if (filters.status) query = query.eq("status", filters.status);
+      if (filters.tenant)
         query = query.ilike("tenant", `%${filters.tenant}%`);
-      }
-
-      if (filters.landlord) {
-        console.log("🔹 Applying landlord filter:", filters.landlord);
+      if (filters.landlord)
         query = query.ilike("landlord", `%${filters.landlord}%`);
-      }
 
       if (filters.property_name) {
         const safe = filters.property_name.replace(/[%_]/g, "");
-
         const { abbr, full } = normalizeStateValue(safe);
 
-        console.log("🔹 Applying property_name OR filter:", safe);
-        console.log("🧠 State normalization:", { abbr, full });
-
         const terms = [safe];
-
-        // ✅ expand search terms
         if (abbr && abbr !== safe) terms.push(abbr);
         if (full && full !== safe) terms.push(full);
 
@@ -527,31 +479,17 @@ export async function GET(req: Request) {
         query = query.or(conditions.join(","));
       }
 
-      if (filters.lease_start_from) {
-        console.log("🔹 Applying lease_start_from:", filters.lease_start_from);
+      if (filters.lease_start_from)
         query = query.gte("lease_start", filters.lease_start_from);
-      }
 
-      if (filters.lease_end_to) {
-        console.log("🔹 Applying lease_end_to:", filters.lease_end_to);
+      if (filters.lease_end_to)
         query = query.lte("lease_end", filters.lease_end_to);
-      }
 
-      console.log("📊 Applying sort before execution");
-
-      query = query.order(field, {
-        ascending: sortOrder === "asc",
-      });
-
-      console.log("🚀 Executing AI query...");
+      query = query
+        .order(field, { ascending: sortOrder === "asc" })
+        .range(offset, offset + limit - 1);
 
       const { data, count, error } = await query;
-
-      console.log("📊 AI Query Result:", {
-        rows: data?.length ?? 0,
-        total: count ?? 0,
-        error: error?.message ?? null,
-      });
 
       if (error)
         return NextResponse.json({
@@ -573,16 +511,12 @@ export async function GET(req: Request) {
     }
 
     /* ============================================================
-       TRADITIONAL MODE
+       TRADITIONAL MODE (FIXED + RANKING)
     ============================================================ */
-
-    console.log("📄 Lease Traditional search executing");
 
     let query = supabase
       .from("view_lease_property_with_user")
       .select("*", { count: "exact" });
-
-    console.log("📦 Initial Query (Traditional)");
 
     if (search && search.trim().length > 0) {
       const safe = search
@@ -591,18 +525,11 @@ export async function GET(req: Request) {
         .replace(/,/g, "")
         .replace(/\s+/g, " ");
 
-      console.log("🔎 Lease Raw Search Input:", search);
-      console.log("🔎 Lease Sanitized Search:", safe);
-
       const tokens = [...new Set(safe.split(" ").filter((t) => t.length > 2))];
-
-      console.log("🔎 Lease Search Tokens:", tokens);
 
       const conditions: string[] = [];
 
       for (const token of tokens) {
-        console.log("🔹 Building condition for token:", token);
-
         conditions.push(`tenant.ilike.%${token}%`);
         conditions.push(`landlord.ilike.%${token}%`);
         conditions.push(`property_name.ilike.%${token}%`);
@@ -614,26 +541,14 @@ export async function GET(req: Request) {
 
       const orFilter = conditions.join(",");
 
-      console.log("🔍 Lease Traditional filter:", orFilter);
-
-      query = query.or(orFilter);
+      query = query.or(orFilter); // ✅ FIX APPLIED
     }
-
-    console.log("📊 Applying sort + pagination");
 
     query = query
       .order(field, { ascending: sortOrder === "asc" })
       .range(offset, offset + limit - 1);
 
-    console.log("🚀 Executing Traditional query...");
-
     const { data, count, error } = await query;
-
-    console.log("📊 Lease Traditional Result:", {
-      returned_rows: data?.length ?? 0,
-      total_count: count ?? 0,
-      error: error?.message ?? null,
-    });
 
     if (error)
       return NextResponse.json({
@@ -641,12 +556,34 @@ export async function GET(req: Request) {
         message: error.message,
       });
 
+    /* ============================================================
+       🔥 POST-FETCH RANKING (TENANT PRIORITY)
+    ============================================================ */
+
+    let ranked = data ?? [];
+
+    if (search && ranked.length > 0) {
+      const exact = search.trim().toLowerCase();
+
+      ranked = ranked.sort((a: any, b: any) => {
+        const score = (row: any) => {
+          if (row.tenant?.toLowerCase() === exact) return 0;
+          if (row.tenant?.toLowerCase().includes(exact)) return 1;
+          if (row.landlord?.toLowerCase().includes(exact)) return 2;
+          if (row.property_name?.toLowerCase().includes(exact)) return 3;
+          return 4;
+        };
+
+        return score(a) - score(b);
+      });
+    }
+
     await audit(session, req, "Viewed lease list");
 
     return NextResponse.json({
       success: true,
       mode: "traditional",
-      data: data ?? [],
+      data: ranked,
       total: count ?? 0,
       page,
       limit,

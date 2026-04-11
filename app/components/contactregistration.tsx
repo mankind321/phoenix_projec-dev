@@ -373,7 +373,13 @@ export default function ContactFormPage() {
               </Label>
               <Input
                 name="listing_company"
-                value={form.listing_company}
+                value={
+                  form.listing_company
+                    ? form.listing_company
+                        .replace(/^\[|\]$/g, "") // remove [ ]
+                        .replace(/['"]/g, "") // remove quotes
+                    : ""
+                }
                 onChange={handleChange}
                 required
                 disabled={!isEditing}

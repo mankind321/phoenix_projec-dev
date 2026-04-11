@@ -189,6 +189,22 @@ export function useRealtimeTest(
   useEffect(() => {
     const userId = session?.user?.id;
 
+    // 🔥 HANDLE LOGOUT → CLEANUP REALTIME
+    if (!userId) {
+      if (window.__realtimeChannel) {
+        console.log("[realtime] logout → unsubscribing");
+
+        window.__realtimeChannel.unsubscribe();
+        window.__realtimeChannel = null;
+        window.__realtimeUserId = null;
+        window.__realtimeInitializing = false;
+      }
+
+      return;
+    }
+
+    if (!enabled) return;
+
     if (!enabled || !userId) return;
 
     // reuse existing
