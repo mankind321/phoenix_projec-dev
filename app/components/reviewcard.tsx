@@ -34,6 +34,7 @@ type Property = {
   cap_rate?: number | string;
   latitude?: number | string;
   longitude?: number | string;
+  tenancytype?: string;
 };
 
 export default function ReviewPropertyListPage() {
@@ -317,6 +318,10 @@ export default function ReviewPropertyListPage() {
                           {p.address}, {p.city}, {p.state}
                         </p>
 
+                        <p className="text-xs text-gray-500">
+                          {formatTenancyType(p.tenancytype)} - {p.type}
+                        </p>
+
                         {p.sale_date && (
                           <p className="text-xs text-gray-400">
                             Sold: {p.sale_date}
@@ -382,4 +387,15 @@ export default function ReviewPropertyListPage() {
       </div>
     </div>
   );
+}
+
+function formatTenancyType(value?: string | null): string {
+  if (!value) return "—";
+
+  const map: Record<string, string> = {
+    SingleTenant: "Single Tenant",
+    MultiTenant: "Multi Tenant",
+  };
+
+  return map[value] || value;
 }

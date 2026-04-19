@@ -175,6 +175,40 @@ export function fallbackDSL(userInput: string) {
   }
 
   // ----------------------------------
+  // 🏢 TENANCY TYPE (🔥 NEW)
+  // ----------------------------------
+  const tenancyNormalized = text
+    .replace(/multi[\s-]?tenant/g, "multitenant")
+    .replace(/single[\s-]?tenant/g, "singletenant");
+
+  const TENANCY_TYPES = [
+    { key: "multitenant", value: "MultiTenant" },
+    { key: "singletenant", value: "SingleTenant" },
+  ];
+
+  const matchedTenancy = TENANCY_TYPES.filter((t) =>
+    tenancyNormalized.includes(t.key),
+  );
+
+  // 👉 SINGLE tenancy
+  if (matchedTenancy.length === 1) {
+    filters.push({
+      field: "tenancy_type", // ✅ IMPORTANT (do NOT use "type")
+      op: "=",
+      value: matchedTenancy[0].value,
+    });
+  }
+
+  // 👉 MULTIPLE tenancy (rare but safe)
+  if (matchedTenancy.length > 1) {
+    filters.push({
+      field: "tenancy_type",
+      op: "in",
+      value: matchedTenancy.map((t) => t.value),
+    });
+  }
+
+  // ----------------------------------
   // 🔀 STATUS MERGE
   // ----------------------------------
   if (filters.filter((f) => f.field === "status").length > 1) {

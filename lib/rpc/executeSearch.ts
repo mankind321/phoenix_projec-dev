@@ -13,13 +13,18 @@ export async function executeSearch(supabase: any, rpcParams: any) {
     p_type_in: rpcParams.p_type_in,
     p_exclude_type_in: rpcParams.p_exclude_type_in,
 
+    // ✅ TENANCY TYPE (MATCH DB + SQL)
+    p_tenancytype: rpcParams.p_tenancytype,
+    p_tenancytype_in: rpcParams.p_tenancytype_in,
+    p_exclude_tenancytype_in: rpcParams.p_exclude_tenancytype_in,
+
     // PRICE
     p_min_price: rpcParams.p_min_price,
     p_max_price: rpcParams.p_max_price,
     p_not_min_price: rpcParams.p_not_min_price,
     p_not_max_price: rpcParams.p_not_max_price,
 
-    // ✅ CAP RATE (MOVE THIS HERE — CRITICAL FIX)
+    // CAP RATE
     p_min_cap_rate: rpcParams.p_min_cap_rate,
     p_max_cap_rate: rpcParams.p_max_cap_rate,
     p_not_min_cap_rate: rpcParams.p_not_min_cap_rate,

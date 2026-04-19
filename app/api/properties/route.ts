@@ -118,7 +118,8 @@ export async function GET(req: Request) {
         cap_rate,
         file_url,
         latitude,
-        longitude
+        longitude,
+        tenancytype
       `,
         { count: "exact" },
       )
@@ -144,6 +145,7 @@ export async function GET(req: Request) {
         ...(abbr ? [`state.ilike.%${abbr}%`] : []), // ✅ CRITICAL
         `type.ilike.%${safe}%`,
         `status.ilike.%${safe}%`,
+        `tenancytype.ilike.%${safe}%`,
       ].join(",");
 
       console.log("🔗 OR FILTER:", orFilter);

@@ -53,11 +53,56 @@ export function fixKnownAIIssues(dsl: any) {
     }
 
     // ----------------------------------
+    // 🏢 TENANCY TYPE FIXES (🔥 NEW)
+    // ----------------------------------
+
+    // 1️⃣ Normalize if AI already used correct field
+    if (f.field === "tenancy_type" && typeof f.value === "string") {
+      const v = f.value.toLowerCase().replace(/[\s-]/g, "");
+
+      const TENANCY_FIX_MAP: Record<string, string> = {
+        multitenant: "MultiTenant",
+        singletenant: "SingleTenant",
+      };
+
+      if (TENANCY_FIX_MAP[v]) {
+        console.log(
+          "🛠️ Fixing tenancy_type:",
+          f.value,
+          "→",
+          TENANCY_FIX_MAP[v],
+        );
+        f.value = TENANCY_FIX_MAP[v];
+      }
+    }
+
+    // 2️⃣ 🔥 CRITICAL: Fix misplaced tenancy inside "type"
+    if (f.field === "type" && typeof f.value === "string") {
+      const v = f.value.toLowerCase().replace(/[\s-]/g, "");
+
+      const TENANCY_FROM_TYPE_MAP: Record<string, string> = {
+        multitenant: "MultiTenant",
+        singletenant: "SingleTenant",
+      };
+
+      if (TENANCY_FROM_TYPE_MAP[v]) {
+        console.log("🛠️ Moving tenancy from type → tenancy_type:", f.value);
+
+        // 👉 mutate current filter into tenancy_type
+        f.field = "tenancy_type";
+        f.op = "=";
+        f.value = TENANCY_FROM_TYPE_MAP[v];
+      }
+    }
+
+    // ----------------------------------
     // 🌎 STATE FIXES
     // ----------------------------------
     if (f.field === "state") {
       if (Array.isArray(f.value)) {
-        const resolved = f.value.map(resolveState).filter((v: null) => v !== null);
+        const resolved = f.value
+          .map(resolveState)
+          .filter((v: null) => v !== null);
 
         if (resolved.length > 0) {
           console.log("🛠️ Fixing state array:", f.value, "→", resolved);

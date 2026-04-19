@@ -394,6 +394,19 @@ export default function LeaseViewPage({
             label="Property Landlord"
             value={draftLease.property_landlord}
           />
+          {/* ✅ NEW: View Property Button as InfoItem */}
+          {!isEditing && lease?.property_id && (
+            <div className="space-y-1">
+              <Button
+                variant="outline"
+                className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white hover:text-white"
+                onClick={() => router.push(`/dashboard/properties/${lease.property_id}`)}
+              >
+                <Info className="w-4 h-4" />
+                View Property Information
+              </Button>
+            </div>
+          )}
         </Grid2>
       </InfoSection>
 

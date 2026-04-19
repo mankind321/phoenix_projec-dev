@@ -396,6 +396,7 @@ export async function GET(req: Request) {
     const session = await getServerSession(authOptions);
 
     if (!session?.user) {
+      console.log("⛔ Unauthorized access");
       return NextResponse.json(
         { success: false, message: "Unauthorized" },
         { status: 401 },
@@ -403,6 +404,12 @@ export async function GET(req: Request) {
     }
 
     const user = session.user;
+
+    console.log("👤 User:", {
+      id: user.id,
+      role: user.role,
+      accountId: user.accountId,
+    });
 
     const rlsHeaders = {
       "x-app-role": user.role,
@@ -425,13 +432,22 @@ export async function GET(req: Request) {
 
     const aiTriggered = Boolean(queryText && isAiQuery(queryText));
 
+    console.log("🔍 Search Debug:", {
+      rawSearch,
+      queryText,
+      finalSearch: search,
+      aiTriggered,
+    });
+
     /* ============================================================
        PAGINATION
     ============================================================ */
 
-    const page = Number(searchParams.get("page")) || 1;
+    const page = Math.max(1, Number(searchParams.get("page")) || 1);
     const limit = Number(searchParams.get("limit")) || 20;
     const offset = (page - 1) * limit;
+
+    console.log("📄 Pagination:", { page, limit, offset });
 
     /* ============================================================
        SORTING
@@ -443,12 +459,17 @@ export async function GET(req: Request) {
       ? sortField
       : "created_at";
 
+    console.log("📊 Sorting:", { sortField, field, sortOrder });
+
     /* ============================================================
-       AI MODE (UNCHANGED except removed CASE)
+       AI MODE
     ============================================================ */
 
     if (aiTriggered) {
+      console.log("🤖 AI MODE TRIGGERED");
+
       const filters = await extractLeaseFilters(queryText!);
+      console.log("🧠 Extracted Filters:", filters);
 
       let query = supabase
         .from("view_lease_property_with_user")
@@ -476,7 +497,11 @@ export async function GET(req: Request) {
           conditions.push(`property_type.ilike.%${term}%`);
         }
 
-        query = query.or(conditions.join(","));
+        console.log("🧪 AI OR Conditions:", conditions);
+
+        if (conditions.length > 0) {
+          query = query.or(conditions.join(","));
+        }
       }
 
       if (filters.lease_start_from)
@@ -490,6 +515,13 @@ export async function GET(req: Request) {
         .range(offset, offset + limit - 1);
 
       const { data, count, error } = await query;
+
+      console.log("📊 AI Query Result:", {
+        count,
+        length: data?.length,
+        firstRow: data?.[0],
+        error,
+      });
 
       if (error)
         return NextResponse.json({
@@ -511,7 +543,7 @@ export async function GET(req: Request) {
     }
 
     /* ============================================================
-       TRADITIONAL MODE (FIXED + RANKING)
+       TRADITIONAL MODE
     ============================================================ */
 
     let query = supabase
@@ -527,6 +559,8 @@ export async function GET(req: Request) {
 
       const tokens = [...new Set(safe.split(" ").filter((t) => t.length > 2))];
 
+      console.log("🧩 Tokens:", tokens);
+
       const conditions: string[] = [];
 
       for (const token of tokens) {
@@ -539,9 +573,17 @@ export async function GET(req: Request) {
         conditions.push(`comments.ilike.%${token}%`);
       }
 
-      const orFilter = conditions.join(",");
+      console.log("🧪 OR Conditions:", conditions);
 
-      query = query.or(orFilter); // ✅ FIX APPLIED
+      if (conditions.length > 0) {
+        const orFilter = conditions.join(",");
+        console.log("🧪 OR Filter String:", orFilter);
+        query = query.or(orFilter);
+      } else {
+        console.log("⚠️ No conditions generated — skipping OR filter");
+      }
+    } else {
+      console.log("ℹ️ No search applied — fetching all data");
     }
 
     query = query
@@ -550,6 +592,13 @@ export async function GET(req: Request) {
 
     const { data, count, error } = await query;
 
+    console.log("📊 Traditional Query Result:", {
+      count,
+      length: data?.length,
+      firstRow: data?.[0],
+      error,
+    });
+
     if (error)
       return NextResponse.json({
         success: false,
@@ -557,10 +606,12 @@ export async function GET(req: Request) {
       });
 
     /* ============================================================
-       🔥 POST-FETCH RANKING (TENANT PRIORITY)
+       RANKING
     ============================================================ */
 
     let ranked = data ?? [];
+
+    console.log("📦 Before Ranking:", ranked.length);
 
     if (search && ranked.length > 0) {
       const exact = search.trim().toLowerCase();
@@ -577,6 +628,8 @@ export async function GET(req: Request) {
         return score(a) - score(b);
       });
     }
+
+    console.log("✅ Final Response Count:", ranked.length);
 
     await audit(session, req, "Viewed lease list");
 

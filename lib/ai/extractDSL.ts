@@ -6,7 +6,7 @@ const genAI = new GoogleGenerativeAI(process.env.GOOGLE_GENAI_API_KEY!);
 export async function extractDSL(prompt: string) {
   const model = genAI.getGenerativeModel({ model: MODEL });
 
-  const instruction = `
+const instruction = `
 Return EXACTLY one valid JSON object. No text, no code blocks.
 
 SCHEMA:
@@ -20,6 +20,29 @@ SCHEMA:
 
 FIELDS (ONLY these):
 type, price, cap_rate, state, city, address, status
+
+TYPE FIELD (IMPORTANT):
+
+- "type" includes BOTH:
+  1. Property type → office, retail, industrial, etc.
+  2. Tenancy type → MultiTenant, SingleTenant
+
+- Tenancy values MUST be EXACT:
+  MultiTenant
+  SingleTenant
+
+- Examples:
+  "multi tenant office" →
+    { field: "type", op: "=", value: "MultiTenant" }
+    { field: "type", op: "=", value: "office" }
+
+  "single tenant retail" →
+    { field: "type", op: "=", value: "SingleTenant" }
+    { field: "type", op: "=", value: "retail" }
+
+- If ONLY tenancy is mentioned:
+  "multi tenant" →
+    { field: "type", op: "=", value: "MultiTenant" }
 
 RULES:
 - Use ONLY allowed fields (map "property type"→type, "cap rate"→cap_rate)
@@ -36,10 +59,12 @@ SPECIAL:
 
 - ALWAYS extract ALL entities mentioned. NEVER drop any value.
 
+- Normalize tenancy keywords:
+  "multi tenant", "multi-tenant", "multitenant", "MultiTenant" → MultiTenant
+  "single tenant", "single-tenant", "singletenant", "SingleTenant" → SingleTenant
+
 - Multiple states MUST ALWAYS be returned as an array:
   - "Texas and Florida" → state in ["TX","FL"]
-  - "TX and NC" → state in ["TX","NC"]
-  - "in Texas, Florida, and Georgia" → state in ["TX","FL","GA"]
 
 - Convert FULL state names to 2-letter codes:
   Texas → TX
@@ -56,15 +81,13 @@ SPECIAL:
   → op MUST be "not_in"
   → value MUST be an array
 
-- NEVER return a single state if multiple states are present in the user input.
+- NEVER return a single state if multiple states are present.
 
-- Apply the SAME logic for cities:
-  "Charlotte and Dallas" → city in ["Charlotte","Dallas"]
+- Apply SAME logic for cities.
 
 VALIDATION RULE:
 
-- If multiple values are mentioned in the input, the output MUST include ALL of them.
-- Do NOT omit or reduce values.
+- If multiple values are mentioned, output MUST include ALL of them.
 
 SORT:
 - highest price → price desc

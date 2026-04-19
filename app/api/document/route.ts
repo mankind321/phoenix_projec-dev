@@ -197,7 +197,6 @@ export async function GET(req: Request) {
 
 export async function DELETE(req: Request) {
   try {
-    // 1️⃣ Validate session
     const session = await getServerSession(authOptions);
     const user = session?.user;
 
@@ -208,7 +207,6 @@ export async function DELETE(req: Request) {
       );
     }
 
-    // 2️⃣ RLS headers
     const rlsHeaders = {
       "x-app-role": user.role,
       "x-user-id": user.id,
@@ -217,19 +215,19 @@ export async function DELETE(req: Request) {
 
     const supabase = createRlsClient(rlsHeaders);
 
-    // ------------------------------------------
-    // 🔀 Detect Mode: Single or Bulk Delete
-    // ------------------------------------------
-
     const { searchParams } = new URL(req.url);
     const singleId = searchParams.get("id");
 
     let ids: string[] = [];
 
-    // BULK DELETE MODE
+    // -----------------------------
+    // 🔍 MODE DETECTION
+    // -----------------------------
     if (!singleId) {
       const body = await req.json().catch(() => null);
       ids = body?.ids ?? [];
+
+      console.log("[DELETE] BULK MODE input ids:", ids);
 
       if (!Array.isArray(ids) || ids.length === 0) {
         return NextResponse.json(
@@ -239,48 +237,76 @@ export async function DELETE(req: Request) {
       }
     }
 
-    // SINGLE DELETE MODE
     if (singleId) {
       ids = [singleId];
+      console.log("[DELETE] SINGLE MODE id:", singleId);
     }
 
-    // ------------------------------------------
-    // 3️⃣ Fetch documents first (Audit Logging)
-    // ------------------------------------------
-
+    // -----------------------------
+    // 🔍 FETCH DOCUMENTS
+    // -----------------------------
     const { data: docs, error: fetchError } = await supabase
       .from("document")
-      .select("document_id,file_url")
+      .select("document_id, file_url, property_id")
       .in("document_id", ids);
 
+    console.log("[DELETE] fetched docs:", docs);
+
     if (fetchError || !docs?.length) {
+      console.error("[DELETE] fetch error:", fetchError);
       return NextResponse.json(
         { success: false, message: "Document(s) not found" },
         { status: 404 },
       );
     }
 
-    // ------------------------------------------
-    // 4️⃣ Perform BULK DELETE
-    // ------------------------------------------
+    // -----------------------------
+    // 🚨 EXTRA DEBUG: CHECK SAME FILE_URL
+    // -----------------------------
+    const fileUrls = docs.map((d) => d.file_url);
+    console.log("[DELETE] file_urls of selected:", fileUrls);
 
-    const { error: deleteError } = await supabase
+    const { data: sameFiles } = await supabase
+      .from("document")
+      .select("document_id, file_url")
+      .in("file_url", fileUrls);
+
+    console.log("[DELETE] ALL docs with same file_url:", sameFiles);
+
+    // -----------------------------
+    // 🗑 DELETE
+    // -----------------------------
+    console.log("[DELETE] deleting document_ids:", ids);
+
+    const { data: deletedData, error: deleteError } = await supabase
       .from("document")
       .delete()
-      .in("document_id", ids);
+      .in("document_id", ids)
+      .select(); // 🔥 return deleted rows
+
+    console.log("[DELETE] deleted rows:", deletedData);
 
     if (deleteError) {
-      console.error(deleteError);
+      console.error("[DELETE] delete error:", deleteError);
       return NextResponse.json(
         { success: false, message: deleteError.message },
         { status: 500 },
       );
     }
 
-    // ------------------------------------------
-    // 5️⃣ Audit Trail (Loop)
-    // ------------------------------------------
+    // -----------------------------
+    // 🔍 VERIFY WHAT REMAINS
+    // -----------------------------
+    const { data: remaining } = await supabase
+      .from("document")
+      .select("document_id, file_url")
+      .in("file_url", fileUrls);
 
+    console.log("[DELETE] remaining docs with same file_url:", remaining);
+
+    // -----------------------------
+    // 🧾 AUDIT
+    // -----------------------------
     for (const doc of docs) {
       await logAuditTrail({
         userId: user.id,
@@ -300,7 +326,7 @@ export async function DELETE(req: Request) {
       message: `${ids.length} document(s) deleted successfully`,
     });
   } catch (err: any) {
-    console.error(err);
+    console.error("[DELETE] unexpected error:", err);
 
     return NextResponse.json(
       {

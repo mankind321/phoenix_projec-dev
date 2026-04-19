@@ -1,7 +1,13 @@
 export function isAiQuery(text: string | null): boolean {
   if (!text) return false;
 
-  const t = text.toLowerCase().trim().replace(/\s+/g, " ");
+  const t = text
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, " ")
+    // 🔥 normalize camelCase / PascalCase tenancy
+    .replace(/multi\s*tenant|multitenant/gi, "multi tenant")
+    .replace(/single\s*tenant|singletenant/gi, "single tenant");
 
   // -----------------------------------------
   // 1️⃣ Detect numeric street address → NOT AI
@@ -12,7 +18,7 @@ export function isAiQuery(text: string | null): boolean {
   }
 
   // -----------------------------------------
-  // 🔥 NEW: PROPERTY INTENT (HIGH PRIORITY)
+  // 🔥 PROPERTY INTENT (HIGH PRIORITY)
   // -----------------------------------------
   const propertyKeywords = [
     "property",
@@ -27,10 +33,31 @@ export function isAiQuery(text: string | null): boolean {
     "commercial space",
   ];
 
-  const hasPropertyIntent = propertyKeywords.some((k) => t.includes(k));
+  if (propertyKeywords.some((k) => t.includes(k))) {
+    return true;
+  }
 
-  // 👉 If user clearly refers to properties → AI
-  if (hasPropertyIntent) {
+  // -----------------------------------------
+  // 🔥 TENANCY TYPE DETECTION (UPDATED)
+  // -----------------------------------------
+  const tenancyKeywords = [
+    "single tenant",
+    "multi tenant",
+    "tenancy",
+    "tenancy type",
+  ];
+
+  const hasTenancyKeyword = tenancyKeywords.some((k) => t.includes(k));
+
+  // 👉 short intent: "multitenant", "single tenant"
+  if (hasTenancyKeyword && t.split(" ").length <= 3) {
+    return true;
+  }
+
+  // 👉 structured filter: "office with multi tenant"
+  const tenancyPattern = /\b(single tenant|multi tenant)\b/;
+
+  if (tenancyPattern.test(t)) {
     return true;
   }
 
@@ -108,7 +135,7 @@ export function isAiQuery(text: string | null): boolean {
   }
 
   // -----------------------------------------
-  // 6️⃣ Type-only detection (NEW FIX)
+  // 6️⃣ Type-only detection
   // -----------------------------------------
   const typeKeywords = [
     "industrial",
@@ -125,10 +152,7 @@ export function isAiQuery(text: string | null): boolean {
     "fast food",
   ];
 
-  const hasTypeKeyword = typeKeywords.some((keyword) => t.includes(keyword));
-
-  // 👉 allow short queries like "office", "retail", "fast food"
-  if (hasTypeKeyword && t.split(" ").length <= 3) {
+  if (typeKeywords.some((keyword) => t.includes(keyword)) && t.split(" ").length <= 3) {
     return true;
   }
 

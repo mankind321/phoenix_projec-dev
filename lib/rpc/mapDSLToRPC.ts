@@ -1,8 +1,5 @@
 import { US_STATES } from "../constants/states";
-import {
-  normalizeStatusValue,
-  parseNumericValue,
-} from "../dsl/normalize";
+import { normalizeStatusValue, parseNumericValue } from "../dsl/normalize";
 import { resolveState } from "../dsl/validateDSL";
 import { geocodeLocation } from "../services/geocode";
 
@@ -24,6 +21,12 @@ export async function mapDSLToRPC(dsl: any) {
     p_type: null,
     p_type_in: null, // ✅ ADD THIS
     p_exclude_type_in: null,
+
+    // TENANCY TYPE (🔥 FIXED)
+    p_tenancytype: null,
+    p_tenancytype_in: null,
+    p_exclude_tenancytype_in: null,
+
     p_city: null,
     p_state: null,
 
@@ -313,6 +316,52 @@ export async function mapDSLToRPC(dsl: any) {
         params.p_exclude_type_in = (Array.isArray(value) ? value : [value]).map(
           normalizeStr,
         );
+      }
+    }
+
+    // ----------------------------------
+    // 🏢 TENANCY TYPE (🔥 FIXED)
+    // ----------------------------------
+    if (field === "tenancy_type") {
+      const normalizeStr = (v: string) =>
+        v.toLowerCase().replace(/[\s-]/g, "").trim();
+
+      const mapTenancy = (v: string) => {
+        const key = normalizeStr(v);
+
+        if (key === "multitenant") return "MultiTenant";
+        if (key === "singletenant") return "SingleTenant";
+
+        return v;
+      };
+
+      if (op === "=") {
+        params.p_tenancytype = mapTenancy(value);
+        params.p_tenancytype_in = null;
+      }
+
+      if (op === "!=") {
+        const val = mapTenancy(value);
+
+        params.p_exclude_tenancytype_in = params.p_exclude_tenancytype_in
+          ? [...params.p_exclude_tenancytype_in, val]
+          : [val];
+      }
+
+      if (op === "in") {
+        params.p_tenancytype = null;
+
+        params.p_tenancytype_in = (Array.isArray(value) ? value : [value]).map(
+          mapTenancy,
+        );
+      }
+
+      if (op === "not_in") {
+        const vals = (Array.isArray(value) ? value : [value]).map(mapTenancy);
+
+        params.p_exclude_tenancytype_in = params.p_exclude_tenancytype_in
+          ? [...params.p_exclude_tenancytype_in, ...vals]
+          : vals;
       }
     }
 

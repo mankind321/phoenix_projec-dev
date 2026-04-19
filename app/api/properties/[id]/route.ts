@@ -400,6 +400,7 @@ export async function PUT(
       cap_rate: normalizeCapRate(body.cap_rate),
       sale_date: body.sale_date || null,
       comments: body.comments ?? null,
+      tenancytype: body.tenancytype ?? null,
       updated_by: session.user.id,
       updated_at: new Date().toISOString(),
     };

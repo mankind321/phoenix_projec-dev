@@ -125,6 +125,7 @@ export default function PropertyViewPage({
             cap_rate: p.cap_rate,
             sale_date: p.sale_date,
             comments: p.comments,
+            tenancytype: p.tenancytype,
           });
         } else console.error(json.message);
       } catch (error) {
@@ -163,6 +164,7 @@ export default function PropertyViewPage({
           cap_rate: form.cap_rate ?? null,
           sale_date: form.sale_date || null,
           comments: form.comments ?? null,
+          tenancytype: form.tenancytype ?? null,
         }),
       });
 
@@ -210,6 +212,7 @@ export default function PropertyViewPage({
       cap_rate: data.property.cap_rate,
       sale_date: data.property.sale_date,
       comments: data.property.comments,
+      tenancytype: data.property.tenancytype,
     });
     setIsEditing(false);
   }
@@ -375,7 +378,24 @@ export default function PropertyViewPage({
             onChange={(v) => handleChange("status", v)}
           />
 
+          <InfoItem
+            label="Tenancy Type"
+            value={
+              isEditing
+                ? form.tenancytype
+                : formatTenancyType(property.tenancytype)
+            }
+            editable={isEditing}
+            type="select"
+            options={[
+              { label: "Single Tenant", value: "SingleTenant" },
+              { label: "Multi Tenant", value: "MultiTenant" },
+            ]}
+            onChange={(v) => handleChange("tenancytype", v)}
+          />
+
           <div>
+            <Label className="text-gray-700 font-medium">File</Label>
             {data?.documentFiles?.file_url ? (
               <Button
                 onClick={handleDownloadBrochure}
@@ -384,7 +404,7 @@ export default function PropertyViewPage({
                   downloadingBrochure ||
                   isEditing // ✅ ADD THIS
                 }
-                className="bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-2 text-lg disabled:bg-gray-400"
+                className="bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-2 text-lg disabled:bg-gray-400 mt-2"
               >
                 <Download className="w-5 h-5" />
                 {downloadingBrochure
@@ -505,7 +525,6 @@ export default function PropertyViewPage({
                   <TableRow>
                     <TableHead>Tenant</TableHead>
                     <TableHead>Unit</TableHead>
-                    <TableHead>Landlord</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Start Date</TableHead>
                     <TableHead>End Date</TableHead>
@@ -520,7 +539,6 @@ export default function PropertyViewPage({
                     <TableRow key={lease.lease_id}>
                       <TableCell>{display(lease.tenant)}</TableCell>
                       <TableCell>{display(lease.suite_unit)}</TableCell>
-                      <TableCell>{display(lease.landlord)}</TableCell>
                       <TableCell>{display(lease.status)}</TableCell>
                       <TableCell>{display(lease.lease_start)}</TableCell>
                       <TableCell>{display(lease.lease_end)}</TableCell>
@@ -739,22 +757,41 @@ function InfoItem({
   value,
   editable = false,
   onChange,
+  type = "text",
+  options = [],
 }: {
   label: string;
   value: any;
   editable?: boolean;
   onChange?: (val: string) => void;
+  type?: "text" | "select";
+  options?: { label: string; value: string }[];
 }) {
   return (
     <div className="space-y-1">
       <Label className="text-gray-700 font-medium">{label}</Label>
 
       {editable ? (
-        <input
-          className="border rounded-md px-3 py-2 text-sm w-full"
-          value={value || ""}
-          onChange={(e) => onChange?.(e.target.value)}
-        />
+        type === "select" ? (
+          <select
+            className="border rounded-md px-3 py-2 text-sm w-full"
+            value={value || ""}
+            onChange={(e) => onChange?.(e.target.value)}
+          >
+            <option value="">Select...</option>
+            {options.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <input
+            className="border rounded-md px-3 py-2 text-sm w-full"
+            value={value || ""}
+            onChange={(e) => onChange?.(e.target.value)}
+          />
+        )
       ) : (
         <p className="border rounded-md bg-gray-50 px-3 py-2 text-gray-800 text-sm">
           {value || "—"}
@@ -847,4 +884,15 @@ export function normalizeBrokerText(
           .replace(/\./g, "-"),
       );
   }
+}
+
+function formatTenancyType(value?: string | null): string {
+  if (!value) return "—";
+
+  const map: Record<string, string> = {
+    SingleTenant: "Single Tenant",
+    MultiTenant: "Multi Tenant",
+  };
+
+  return map[value] || value;
 }

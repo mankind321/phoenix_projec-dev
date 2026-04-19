@@ -58,6 +58,7 @@ interface Property {
   file_url: string | null;
   latitude: number | null;
   longitude: number | null;
+  tenancytype: string | null;
 }
 
 const MAP_CONTAINER_STYLE: React.CSSProperties = {
@@ -659,11 +660,20 @@ export default function PropertyCardTable() {
                           <span className="font-medium">{p.type ?? "—"}</span>
                         </div>
                         <div className="flex justify-between">
+                          <span>Tenancy Type</span>
+                          <span className="font-medium">
+                            {formatTenancyType(p.tenancytype) ?? "—"}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
                           <span>Price</span>
                           <span className="font-medium">
-                            {p.price
-                              ? `$${p.price.toLocaleString()}`
-                              : (p.price_usd ?? "—")}
+                            {typeof p.price === "number" && !isNaN(p.price)
+                              ? p.price.toLocaleString("en-US", {
+                                  style: "currency",
+                                  currency: "USD",
+                                })
+                              : normalizeCurrency(p.price_usd)}
                           </span>
                         </div>
                         <div className="flex justify-between">
@@ -887,3 +897,54 @@ function formatCapRate(value: any): string {
 
   return str; // fallback (unexpected format)
 }
+
+function normalizeCurrency(input: string | null | undefined): string {
+  if (!input) return "$0.00";
+
+  // 1. Remove everything except digits and dots
+  const cleaned = input.replace(/[^\d.]/g, "");
+
+  if (!cleaned) return "$0.00";
+
+  // 2. Find last dot (assume it's the decimal separator)
+  const lastDotIndex = cleaned.lastIndexOf(".");
+
+  let integerPart = "";
+  let decimalPart = "";
+
+  if (lastDotIndex !== -1) {
+    integerPart = cleaned.slice(0, lastDotIndex).replace(/\./g, "");
+    decimalPart = cleaned.slice(lastDotIndex + 1).replace(/\./g, "");
+  } else {
+    integerPart = cleaned;
+  }
+
+  // 3. Combine into valid number
+  let normalizedNumber = integerPart;
+
+  if (decimalPart) {
+    normalizedNumber += "." + decimalPart.slice(0, 2); // limit to 2 decimals
+  }
+
+  const numberValue = parseFloat(normalizedNumber);
+
+  if (isNaN(numberValue)) return "$0.00";
+
+  // 4. Format as currency
+  return numberValue.toLocaleString("en-US", {
+    style: "currency",
+    currency: "USD",
+  });
+}
+
+function formatTenancyType(value?: string | null): string {
+  if (!value) return "—";
+
+  const map: Record<string, string> = {
+    SingleTenant: "Single Tenant",
+    MultiTenant: "Multi Tenant",
+  };
+
+  return map[value] || value;
+}
+

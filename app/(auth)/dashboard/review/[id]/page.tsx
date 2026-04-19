@@ -291,12 +291,14 @@ export default function PropertyViewPage({
           <InfoItem label="Type" value={property.type} />
           <InfoItem label="Landlord" value={property.landlord} />
           <InfoItem label="Status" value={property.status} />
+          <InfoItem label="Tenancy Type" value={formatTenancyType(property.tenancytype)} />
           <div>
+            <Label className="text-gray-700 font-medium">File</Label>
             {data?.documentFiles?.file_url ? (
               <Button
                 onClick={handleDownloadBrochure}
                 disabled={!data?.documentFiles?.file_url || downloadingBrochure}
-                className="bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-2 text-lg disabled:bg-gray-400"
+                className="bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-2 text-lg disabled:bg-gray-400 mt-2"
               >
                 {downloadingBrochure ? (
                   <Loader2 className="w-5 h-5 animate-spin" />
@@ -563,4 +565,15 @@ function normalizeValue(value: any): string {
   str = str.trim();
 
   return str || "—";
+}
+
+function formatTenancyType(value?: string | null): string {
+  if (!value) return "—";
+
+  const map: Record<string, string> = {
+    SingleTenant: "Single Tenant",
+    MultiTenant: "Multi Tenant",
+  };
+
+  return map[value] || value;
 }
