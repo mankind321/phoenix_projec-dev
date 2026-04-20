@@ -277,10 +277,13 @@ export default function ContactTable() {
         cell: ({ row }) =>
           row.original.website ? (
             <a
-              href={row.original.website}
-              target="_blank"
+              href="#"
               className="text-blue-600 underline truncate block max-w-[180px] cursor-pointer"
-              onClick={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                openWebsite(row.original.website);
+              }}
               onDoubleClick={async () => {
                 await navigator.clipboard.writeText(row.original.website);
                 toast.success("Copied URL");
@@ -332,7 +335,7 @@ export default function ContactTable() {
     ],
     [router],
   );
-  
+
   React.useEffect(() => {
     if (status !== "authenticated" || !userId) return;
 
@@ -828,3 +831,14 @@ function CopyableCell({ value }: { value?: string | null }) {
     </span>
   );
 }
+
+const openWebsite = (url?: string) => {
+  if (!url) return;
+
+  const normalized =
+    url.startsWith("http://") || url.startsWith("https://")
+      ? url
+      : `https://${url}`;
+
+  window.open(normalized, "_blank", "noopener,noreferrer");
+};
