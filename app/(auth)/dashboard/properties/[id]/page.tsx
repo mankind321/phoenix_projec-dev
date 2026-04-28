@@ -71,6 +71,8 @@ export default function PropertyViewPage({
   const [form, setForm] = useState<any>({});
   const [saving, setSaving] = useState(false);
 
+  const [rentSchedule, setRentSchedule] = useState<any[]>([]);
+
   const [leaseCounts, setLeaseCounts] = useState({
     active: 0,
     expired: 0,
@@ -136,6 +138,27 @@ export default function PropertyViewPage({
     };
 
     fetchProperty();
+  }, [propertyId]);
+
+  useEffect(() => {
+    if (!propertyId) return;
+
+    const fetchRentSchedule = async () => {
+      try {
+        const res = await fetch(
+          `/api/properties/rent-schedule?property_id=${propertyId}`,
+        );
+        const json = await res.json();
+
+        if (json.success) {
+          setRentSchedule(json.items ?? []);
+        }
+      } catch (err) {
+        console.error("Failed to load rent schedule:", err);
+      }
+    };
+
+    fetchRentSchedule();
   }, [propertyId]);
 
   function handleChange(field: string, value: any) {
@@ -619,6 +642,121 @@ export default function PropertyViewPage({
         </Tabs>
       </InfoSection>
 
+      {/* RENT SCHEDULE */}
+      <InfoSection icon={<DollarSign />} title="Rent Schedule">
+        {rentSchedule.length === 0 ? (
+          <p className="text-gray-500">No rent schedule available.</p>
+        ) : (
+          (() => {
+            // ✅ Column visibility (include RAW fallback fields)
+            const columnVisibility = {
+              startDate: rentSchedule.some(
+                (r) => r.startDate || r.startDateRaw,
+              ),
+              endDate: rentSchedule.some((r) => r.endDate || r.endDateRaw),
+              monthlyRent: hasAnyValue(rentSchedule, "monthlyRent"),
+              annualRent: hasAnyValue(rentSchedule, "annualRent"),
+              psf: hasAnyValue(rentSchedule, "psf"),
+              capRate: hasAnyValue(rentSchedule, "capRate"),
+              rentIncreasePercent: hasAnyValue(
+                rentSchedule,
+                "rentIncreasePercent",
+              ),
+            };
+
+            return (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Term</TableHead>
+
+                    {columnVisibility.startDate && (
+                      <TableHead>Start Date</TableHead>
+                    )}
+
+                    {columnVisibility.endDate && (
+                      <TableHead>End Date</TableHead>
+                    )}
+
+                    {columnVisibility.monthlyRent && (
+                      <TableHead>Monthly Rent</TableHead>
+                    )}
+
+                    {columnVisibility.annualRent && (
+                      <TableHead>Annual Rent</TableHead>
+                    )}
+
+                    {columnVisibility.rentIncreasePercent && (
+                      <TableHead>Rent Increase %</TableHead>
+                    )}
+
+                    {columnVisibility.psf && <TableHead>PSF</TableHead>}
+
+                    {columnVisibility.capRate && (
+                      <TableHead>Cap Rate</TableHead>
+                    )}
+                  </TableRow>
+                </TableHeader>
+
+                <TableBody>
+                  {rentSchedule.map((r) => {
+                    const startDateValue = r.startDate ?? r.startDateRaw ?? "-";
+
+                    const endDateValue = r.endDate ?? r.endDateRaw ?? "-";
+
+                    return (
+                      <TableRow key={r.id}>
+                        <TableCell>{r.term || "-"}</TableCell>
+
+                        {columnVisibility.startDate && (
+                          <TableCell>{startDateValue}</TableCell>
+                        )}
+
+                        {columnVisibility.endDate && (
+                          <TableCell>{endDateValue}</TableCell>
+                        )}
+
+                        {columnVisibility.monthlyRent && (
+                          <TableCell>
+                            {r.monthlyRent ? formatUSD(r.monthlyRent) : "-"}
+                          </TableCell>
+                        )}
+
+                        {columnVisibility.annualRent && (
+                          <TableCell>
+                            {r.annualRent ? formatUSD(r.annualRent) : "-"}
+                          </TableCell>
+                        )}
+
+                        {columnVisibility.rentIncreasePercent && (
+                          <TableCell>
+                            {r.rentIncreasePercent
+                              ? `${r.rentIncreasePercent}%`
+                              : "-"}
+                          </TableCell>
+                        )}
+
+                        {columnVisibility.psf && (
+                          <TableCell>
+                            {r.psf ? `$${Number(r.psf).toFixed(2)}` : "-"}
+                          </TableCell>
+                        )}
+
+                        {columnVisibility.capRate && (
+                          <TableCell>
+                            {r.capRate ? `${r.capRate}%` : "-"}
+                          </TableCell>
+                        )}
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            );
+          })()
+        )}
+      </InfoSection>
+
       {/* CONTACTS */}
       <InfoSection icon={<Users />} title="Brokers">
         {contacts.length === 0 ? (
@@ -895,4 +1033,11 @@ function formatTenancyType(value?: string | null): string {
   };
 
   return map[value] || value;
+}
+
+function hasAnyValue(data: any[], field: string) {
+  return data.some(
+    (row) =>
+      row[field] !== null && row[field] !== undefined && row[field] !== "",
+  );
 }
