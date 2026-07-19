@@ -328,6 +328,28 @@ export default function LeaseViewPage({
             editable={isEditing}
             onChange={(v) => setDraftLease({ ...draftLease, suite_unit: v })}
           />
+
+          <InfoItem
+            label="Size (SF)"
+            type="number"
+            value={
+              isEditing
+                ? draftLease.size
+                : (() => {
+                    const size = getLeaseSize(lease);
+
+                    return size
+                      ? size.toLocaleString(undefined, {
+                          minimumFractionDigits: 0,
+                          maximumFractionDigits: 2,
+                        })
+                      : "—";
+                  })()
+            }
+            editable={isEditing}
+            onChange={(v) => setDraftLease({ ...draftLease, size: v })}
+          />
+
           {/* STATUS */}
           <div className="space-y-1">
             <Label className="text-gray-700 font-medium">Status</Label>
@@ -400,7 +422,9 @@ export default function LeaseViewPage({
               <Button
                 variant="outline"
                 className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white hover:text-white"
-                onClick={() => router.push(`/dashboard/properties/${lease.property_id}`)}
+                onClick={() =>
+                  router.push(`/dashboard/properties/${lease.property_id}`)
+                }
               >
                 <Info className="w-4 h-4" />
                 View Property Information
@@ -456,16 +480,45 @@ export default function LeaseViewPage({
             label="Current Annual Rent"
             type="number"
             value={
-              isEditing ? draftLease.annual_rent : formatUSD(lease.annual_rent)
+              isEditing
+                ? draftLease.annual_rent
+                : (() => {
+                    const annual = getLeaseAnnualRent(lease);
+                    return annual ? formatUSD(annual) : "—";
+                  })()
             }
             editable={isEditing}
             onChange={(v) => setDraftLease({ ...draftLease, annual_rent: v })}
           />
 
           <InfoItem
+            label="Current Monthly Rent"
+            value={(() => {
+              const monthly = getLeaseMonthlyRent(
+                isEditing ? draftLease : lease,
+              );
+
+              return monthly ? formatUSD(monthly) : "—";
+            })()}
+          />
+
+          <InfoItem
             label="Base Rent PSF"
             type="number"
-            value={isEditing ? draftLease.rent_psf : formatUSD(lease.rent_psf)}
+            value={
+              isEditing
+                ? draftLease.rent_psf
+                : (() => {
+                    const psf = getLeaseRentPsf(lease);
+
+                    return psf
+                      ? `$${psf.toLocaleString(undefined, {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}`
+                      : "—";
+                  })()
+            }
             editable={isEditing}
             onChange={(v) => setDraftLease({ ...draftLease, rent_psf: v })}
           />
@@ -687,4 +740,99 @@ function normalizeNullableText(value: any) {
   if (typeof value !== "string") return value;
   const trimmed = value.trim();
   return trimmed === "" ? null : trimmed;
+}
+
+function getLeaseSize(lease: any): number | null {
+  const size = Number(lease.size);
+
+  if (size > 0) {
+    return size;
+  }
+
+  const rentPsf = Number(lease.rent_psf);
+
+  if (rentPsf <= 0) {
+    return null;
+  }
+
+  const annualRent = Number(lease.annual_rent);
+
+  if (annualRent > 0) {
+    return annualRent / rentPsf;
+  }
+
+  const monthlyRent = Number(lease.monthly_rent);
+
+  if (monthlyRent > 0) {
+    return (monthlyRent * 12) / rentPsf;
+  }
+
+  return null;
+}
+
+function getLeaseRentPsf(lease: any): number | null {
+  const rentPsf = Number(lease.rent_psf);
+
+  if (rentPsf > 0) {
+    return rentPsf;
+  }
+
+  const size = getLeaseSize(lease);
+
+  if (!size || size <= 0) {
+    return null;
+  }
+
+  const annualRent = Number(lease.annual_rent);
+
+  if (annualRent > 0) {
+    return annualRent / size;
+  }
+
+  const monthlyRent = Number(lease.monthly_rent);
+
+  if (monthlyRent > 0) {
+    return (monthlyRent * 12) / size;
+  }
+
+  return null;
+}
+
+function getLeaseAnnualRent(lease: any): number | null {
+  const annualRent = Number(lease.annual_rent);
+
+  if (annualRent > 0) {
+    return annualRent;
+  }
+
+  const monthlyRent = Number(lease.monthly_rent);
+
+  if (monthlyRent > 0) {
+    return monthlyRent * 12;
+  }
+
+  const size = getLeaseSize(lease);
+  const rentPsf = getLeaseRentPsf(lease);
+
+  if (size && rentPsf) {
+    return size * rentPsf;
+  }
+
+  return null;
+}
+
+function getLeaseMonthlyRent(lease: any): number | null {
+  const monthlyRent = Number(lease.monthly_rent);
+
+  if (monthlyRent > 0) {
+    return monthlyRent;
+  }
+
+  const annualRent = getLeaseAnnualRent(lease);
+
+  if (annualRent) {
+    return annualRent / 12;
+  }
+
+  return null;
 }

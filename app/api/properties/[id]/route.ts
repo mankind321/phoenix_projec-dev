@@ -112,33 +112,43 @@ export async function GET(
     // ----------------------------------------------
     // 5️⃣ Fetch leases
     // ----------------------------------------------
+    // ----------------------------------------------
+    // 5️⃣ Fetch leases
+    // ----------------------------------------------
     const [{ data: activeLeases }, { data: expiredLeases }] = await Promise.all(
       [
         supabase
-          .from("lease")
+          .from("view_lease_details")
           .select("*")
           .eq("property_id", propertyId)
           .or(
-            "status.ilike.active," +
-              "status.ilike.occupied," +
-              "status.ilike.current," +
-              "status.ilike.running," +
-              "status.ilike.effective," +
-              "status.ilike.ongoing," +
-              "status.ilike.leased," +
+            [
+              "status.ilike.active",
+              "status.ilike.occupied",
+              "status.ilike.current",
+              "status.ilike.running",
+              "status.ilike.effective",
+              "status.ilike.ongoing",
+              "status.ilike.leased",
               "status.ilike.available",
-          ),
+            ].join(","),
+          )
+          .order("lease_start", { ascending: false }),
+
         supabase
-          .from("lease")
+          .from("view_lease_details")
           .select("*")
           .eq("property_id", propertyId)
           .or(
-            "status.ilike.expired," +
-              "status.ilike.terminated," +
-              "status.ilike.ended," +
-              "status.ilike.closed," +
+            [
+              "status.ilike.expired",
+              "status.ilike.terminated",
+              "status.ilike.ended",
+              "status.ilike.closed",
               "status.ilike.inactive",
-          ),
+            ].join(","),
+          )
+          .order("lease_end", { ascending: false }),
       ],
     );
 
@@ -388,22 +398,37 @@ export async function PUT(
     // ----------------------------------------------
     // 🧠 Normalize payload
     // ----------------------------------------------
-    const payload: any = {
-      name: body.name ?? null,
-      type: body.type ?? null,
-      landlord: body.landlord ?? null,
-      status: body.status ?? null,
-      address: body.address ?? null,
-      city: body.city ?? null,
-      state: body.state ?? null,
-      price: body.price ? Number(body.price) : null,
-      cap_rate: normalizeCapRate(body.cap_rate),
-      sale_date: body.sale_date || null,
-      comments: body.comments ?? null,
-      tenancytype: body.tenancytype ?? null,
-      updated_by: session.user.id,
-      updated_at: new Date().toISOString(),
-    };
+const payload: any = {
+  name: body.name ?? null,
+  type: body.type ?? null,
+  landlord: body.landlord ?? null,
+  status: body.status ?? null,
+  address: body.address ?? null,
+  city: body.city ?? null,
+  state: body.state ?? null,
+
+  // ✅ NEW
+  size:
+    body.size !== undefined &&
+    body.size !== null &&
+    body.size !== ""
+      ? Number(body.size)
+      : null,
+
+  price:
+    body.price !== undefined &&
+    body.price !== null &&
+    body.price !== ""
+      ? Number(body.price)
+      : null,
+
+  cap_rate: normalizeCapRate(body.cap_rate),
+  sale_date: body.sale_date || null,
+  comments: body.comments ?? null,
+  tenancytype: body.tenancytype ?? null,
+  updated_by: session.user.id,
+  updated_at: new Date().toISOString(),
+};
 
     // ----------------------------------------------
     // 🔍 Check existing property (INCLUDE ADDRESS)
@@ -430,7 +455,7 @@ export async function PUT(
       payload.address !== existingProperty.address ||
       payload.city !== existingProperty.city ||
       payload.state !== existingProperty.state;
-    
+
     if (addressChanged && payload.address) {
       const fullAddress = `${payload.address}, ${payload.city}, ${payload.state}`;
 

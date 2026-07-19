@@ -267,7 +267,7 @@ export function useRealtimeTest(
                   >
                     {isRentRoll
                       ? `Rent Roll extraction completed for "${row.file_name ?? "document"}". Please check the Tenant page to view the newly added data.`
-                      : `Data extraction completed for "${row.file_name ?? "document"}". Please notify your Direct Manager or Admin about the newly added document.`}
+                      : `Data extraction completed for "${row.file_name ?? "document"}". Please check the Property List  page to view the newly added data.`}
                   </div>,
                   { id: toastId, duration: 30000 },
                 );

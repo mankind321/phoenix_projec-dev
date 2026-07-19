@@ -123,6 +123,7 @@ export default function PropertyViewPage({
             address: p.address,
             city: p.city,
             state: p.state,
+            size: p.size, // ✅ ADD
             price: p.price,
             cap_rate: p.cap_rate,
             sale_date: p.sale_date,
@@ -183,6 +184,7 @@ export default function PropertyViewPage({
           address: form.address ?? null,
           city: form.city ?? null,
           state: form.state ?? null,
+          size: form.size ? Number(form.size) : null, // ✅ ADD
           price: form.price ? Number(form.price) : null,
           cap_rate: form.cap_rate ?? null,
           sale_date: form.sale_date || null,
@@ -231,6 +233,7 @@ export default function PropertyViewPage({
       address: data.property.address,
       city: data.property.city,
       state: data.property.state,
+      size: data.property.size, // ✅ ADD
       price: data.property.price,
       cap_rate: data.property.cap_rate,
       sale_date: data.property.sale_date,
@@ -417,6 +420,22 @@ export default function PropertyViewPage({
             onChange={(v) => handleChange("tenancytype", v)}
           />
 
+          <InfoItem
+            label="Property Size"
+            value={
+              isEditing
+                ? form.size
+                : property.size
+                  ? `${Number(property.size).toLocaleString(undefined, {
+                      minimumFractionDigits: 0,
+                      maximumFractionDigits: 2,
+                    })} SF`
+                  : "—"
+            }
+            editable={isEditing}
+            onChange={(v) => handleChange("size", v)}
+          />
+
           <div>
             <Label className="text-gray-700 font-medium">File</Label>
             {data?.documentFiles?.file_url ? (
@@ -543,48 +562,95 @@ export default function PropertyViewPage({
             {leases.active.length === 0 ? (
               <p className="text-gray-500">No active leases.</p>
             ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Tenant</TableHead>
-                    <TableHead>Unit</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Start Date</TableHead>
-                    <TableHead>End Date</TableHead>
-                    <TableHead>Annual Rent</TableHead>
-                    <TableHead>Price</TableHead>
-                    <TableHead className="text-center">Action</TableHead>
-                  </TableRow>
-                </TableHeader>
-
-                <TableBody>
-                  {leases.active.map((lease) => (
-                    <TableRow key={lease.lease_id}>
-                      <TableCell>{display(lease.tenant)}</TableCell>
-                      <TableCell>{display(lease.suite_unit)}</TableCell>
-                      <TableCell>{display(lease.status)}</TableCell>
-                      <TableCell>{display(lease.lease_start)}</TableCell>
-                      <TableCell>{display(lease.lease_end)}</TableCell>
-                      <TableCell>
-                        {display(formatUSD(lease.annual_rent))}
-                      </TableCell>
-                      <TableCell>{display(formatUSD(lease.price))}</TableCell>
-                      <TableCell className="text-center">
-                        <Button
-                          size="sm"
-                          onClick={() =>
-                            router.push(`/dashboard/leases/${lease.lease_id}`)
-                          }
-                          className="bg-blue-600 hover:bg-blue-700 text-white"
-                        >
-                          <Eye size={16} />
-                          View
-                        </Button>
-                      </TableCell>
+              <div className="max-h-[400px] overflow-y-auto border rounded-md">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Tenant</TableHead>
+                      <TableHead>Unit</TableHead>
+                      <TableHead>Size</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Start Date</TableHead>
+                      <TableHead>End Date</TableHead>
+                      <TableHead>PSF</TableHead>
+                      <TableHead>Monthly Rent</TableHead>
+                      <TableHead>Annual Rent</TableHead>
+                      <TableHead className="text-center">Action</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+
+                  <TableBody>
+                    {leases.active.map((lease) => (
+                      <TableRow key={lease.lease_id}>
+                        <TableCell>{display(lease.tenant)}</TableCell>
+
+                        <TableCell>{display(lease.suite_unit)}</TableCell>
+
+                        <TableCell>
+                          {(() => {
+                            const size = getLeaseSize(lease);
+
+                            return size !== null
+                              ? `${size.toLocaleString(undefined, {
+                                  minimumFractionDigits: 0,
+                                  maximumFractionDigits: 2,
+                                })} SF`
+                              : "-";
+                          })()}
+                        </TableCell>
+
+                        <TableCell>{display(lease.status)}</TableCell>
+
+                        <TableCell>{display(lease.lease_start)}</TableCell>
+
+                        <TableCell>{display(lease.lease_end)}</TableCell>
+
+                        <TableCell>
+                          {(() => {
+                            const psf = getLeaseRentPsf(lease);
+
+                            return psf != null
+                              ? `$${psf.toLocaleString(undefined, {
+                                  minimumFractionDigits: 2,
+                                  maximumFractionDigits: 2,
+                                })}`
+                              : "-";
+                          })()}
+                        </TableCell>
+
+                        <TableCell>
+                          {(() => {
+                            const monthlyRent = getLeaseMonthlyRent(lease);
+
+                            return monthlyRent ? formatUSD(monthlyRent) : "-";
+                          })()}
+                        </TableCell>
+
+                        <TableCell>
+                          {(() => {
+                            const annualRent = getLeaseAnnualRent(lease);
+
+                            return annualRent ? formatUSD(annualRent) : "-";
+                          })()}
+                        </TableCell>
+
+                        <TableCell className="text-center">
+                          <Button
+                            size="sm"
+                            onClick={() =>
+                              router.push(`/dashboard/leases/${lease.lease_id}`)
+                            }
+                            className="bg-blue-600 hover:bg-blue-700 text-white"
+                          >
+                            <Eye size={16} className="mr-1" />
+                            View
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
             )}
           </TabsContent>
 
@@ -593,50 +659,95 @@ export default function PropertyViewPage({
             {leases.expired.length === 0 ? (
               <p className="text-gray-500">No expired leases.</p>
             ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Tenant</TableHead>
-                    <TableHead>Unit</TableHead>
-                    <TableHead>Landlord</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Start Date</TableHead>
-                    <TableHead>End Date</TableHead>
-                    <TableHead>Annual Rent</TableHead>
-                    <TableHead>Price</TableHead>
-                    <TableHead className="text-center">Action</TableHead>
-                  </TableRow>
-                </TableHeader>
-
-                <TableBody>
-                  {leases.expired.map((lease) => (
-                    <TableRow key={lease.lease_id}>
-                      <TableCell>{display(lease.tenant)}</TableCell>
-                      <TableCell>{display(lease.suite_unit)}</TableCell>
-                      <TableCell>{display(lease.landlord)}</TableCell>
-                      <TableCell>{display(lease.status)}</TableCell>
-                      <TableCell>{display(lease.lease_start)}</TableCell>
-                      <TableCell>{display(lease.lease_end)}</TableCell>
-                      <TableCell>
-                        {display(formatUSD(lease.annual_rent))}
-                      </TableCell>
-                      <TableCell>{display(formatUSD(lease.price))}</TableCell>
-                      <TableCell className="text-center">
-                        <Button
-                          size="sm"
-                          onClick={() =>
-                            router.push(`/dashboard/leases/${lease.lease_id}`)
-                          }
-                          className="bg-blue-600 hover:bg-blue-700 text-white"
-                        >
-                          <Eye size={16} />
-                          View
-                        </Button>
-                      </TableCell>
+              <div className="max-h-[400px] overflow-y-auto border rounded-md">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Tenant</TableHead>
+                      <TableHead>Unit</TableHead>
+                      <TableHead>Size</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Start Date</TableHead>
+                      <TableHead>End Date</TableHead>
+                      <TableHead className="text-right">PSF</TableHead>
+                      <TableHead className="text-right">Monthly Rent</TableHead>
+                      <TableHead className="text-right">Annual Rent</TableHead>
+                      <TableHead className="text-center">Action</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+
+                  <TableBody>
+                    {leases.expired.map((lease) => (
+                      <TableRow key={lease.lease_id}>
+                        <TableCell>{display(lease.tenant)}</TableCell>
+
+                        <TableCell>{display(lease.suite_unit)}</TableCell>
+
+                        <TableCell>
+                          {(() => {
+                            const size = getLeaseSize(lease);
+
+                            return size !== null
+                              ? `${size.toLocaleString(undefined, {
+                                  minimumFractionDigits: 0,
+                                  maximumFractionDigits: 2,
+                                })} SF`
+                              : "-";
+                          })()}
+                        </TableCell>
+
+                        <TableCell>{display(lease.status)}</TableCell>
+
+                        <TableCell>{display(lease.lease_start)}</TableCell>
+
+                        <TableCell>{display(lease.lease_end)}</TableCell>
+
+                        <TableCell>
+                          {(() => {
+                            const psf = getLeaseRentPsf(lease);
+
+                            return psf != null
+                              ? `$${psf.toLocaleString(undefined, {
+                                  minimumFractionDigits: 2,
+                                  maximumFractionDigits: 2,
+                                })}`
+                              : "-";
+                          })()}
+                        </TableCell>
+
+                        <TableCell>
+                          {(() => {
+                            const monthlyRent = getLeaseMonthlyRent(lease);
+
+                            return monthlyRent ? formatUSD(monthlyRent) : "-";
+                          })()}
+                        </TableCell>
+
+                        <TableCell>
+                          {(() => {
+                            const annualRent = getLeaseAnnualRent(lease);
+
+                            return annualRent ? formatUSD(annualRent) : "-";
+                          })()}
+                        </TableCell>
+
+                        <TableCell className="text-center">
+                          <Button
+                            size="sm"
+                            onClick={() =>
+                              router.push(`/dashboard/leases/${lease.lease_id}`)
+                            }
+                            className="bg-blue-600 hover:bg-blue-700 text-white"
+                          >
+                            <Eye size={16} className="mr-1" />
+                            View
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
             )}
           </TabsContent>
         </Tabs>
@@ -665,93 +776,96 @@ export default function PropertyViewPage({
             };
 
             return (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Term</TableHead>
+              <div className="max-h-[400px] overflow-y-auto border rounded-md">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Term</TableHead>
 
-                    {columnVisibility.startDate && (
-                      <TableHead>Start Date</TableHead>
-                    )}
+                      {columnVisibility.startDate && (
+                        <TableHead>Start Date</TableHead>
+                      )}
 
-                    {columnVisibility.endDate && (
-                      <TableHead>End Date</TableHead>
-                    )}
+                      {columnVisibility.endDate && (
+                        <TableHead>End Date</TableHead>
+                      )}
 
-                    {columnVisibility.monthlyRent && (
-                      <TableHead>Monthly Rent</TableHead>
-                    )}
+                      {columnVisibility.monthlyRent && (
+                        <TableHead>Monthly Rent</TableHead>
+                      )}
 
-                    {columnVisibility.annualRent && (
-                      <TableHead>Annual Rent</TableHead>
-                    )}
+                      {columnVisibility.annualRent && (
+                        <TableHead>Annual Rent</TableHead>
+                      )}
 
-                    {columnVisibility.rentIncreasePercent && (
-                      <TableHead>Rent Increase %</TableHead>
-                    )}
+                      {columnVisibility.rentIncreasePercent && (
+                        <TableHead>Rent Increase %</TableHead>
+                      )}
 
-                    {columnVisibility.psf && <TableHead>PSF</TableHead>}
+                      {columnVisibility.psf && <TableHead>PSF</TableHead>}
 
-                    {columnVisibility.capRate && (
-                      <TableHead>Cap Rate</TableHead>
-                    )}
-                  </TableRow>
-                </TableHeader>
+                      {columnVisibility.capRate && (
+                        <TableHead>Cap Rate</TableHead>
+                      )}
+                    </TableRow>
+                  </TableHeader>
 
-                <TableBody>
-                  {rentSchedule.map((r) => {
-                    const startDateValue = r.startDate ?? r.startDateRaw ?? "-";
+                  <TableBody>
+                    {rentSchedule.map((r) => {
+                      const startDateValue =
+                        r.startDate ?? r.startDateRaw ?? "-";
 
-                    const endDateValue = r.endDate ?? r.endDateRaw ?? "-";
+                      const endDateValue = r.endDate ?? r.endDateRaw ?? "-";
 
-                    return (
-                      <TableRow key={r.id}>
-                        <TableCell>{r.term || "-"}</TableCell>
+                      return (
+                        <TableRow key={r.id}>
+                          <TableCell>{r.term || "-"}</TableCell>
 
-                        {columnVisibility.startDate && (
-                          <TableCell>{startDateValue}</TableCell>
-                        )}
+                          {columnVisibility.startDate && (
+                            <TableCell>{startDateValue}</TableCell>
+                          )}
 
-                        {columnVisibility.endDate && (
-                          <TableCell>{endDateValue}</TableCell>
-                        )}
+                          {columnVisibility.endDate && (
+                            <TableCell>{endDateValue}</TableCell>
+                          )}
 
-                        {columnVisibility.monthlyRent && (
-                          <TableCell>
-                            {r.monthlyRent ? formatUSD(r.monthlyRent) : "-"}
-                          </TableCell>
-                        )}
+                          {columnVisibility.monthlyRent && (
+                            <TableCell>
+                              {r.monthlyRent ? formatUSD(r.monthlyRent) : "-"}
+                            </TableCell>
+                          )}
 
-                        {columnVisibility.annualRent && (
-                          <TableCell>
-                            {r.annualRent ? formatUSD(r.annualRent) : "-"}
-                          </TableCell>
-                        )}
+                          {columnVisibility.annualRent && (
+                            <TableCell>
+                              {r.annualRent ? formatUSD(r.annualRent) : "-"}
+                            </TableCell>
+                          )}
 
-                        {columnVisibility.rentIncreasePercent && (
-                          <TableCell>
-                            {r.rentIncreasePercent
-                              ? `${r.rentIncreasePercent}%`
-                              : "-"}
-                          </TableCell>
-                        )}
+                          {columnVisibility.rentIncreasePercent && (
+                            <TableCell>
+                              {r.rentIncreasePercent
+                                ? `${r.rentIncreasePercent}%`
+                                : "-"}
+                            </TableCell>
+                          )}
 
-                        {columnVisibility.psf && (
-                          <TableCell>
-                            {r.psf ? `$${Number(r.psf).toFixed(2)}` : "-"}
-                          </TableCell>
-                        )}
+                          {columnVisibility.psf && (
+                            <TableCell>
+                              {r.psf ? `$${Number(r.psf).toFixed(2)}` : "-"}
+                            </TableCell>
+                          )}
 
-                        {columnVisibility.capRate && (
-                          <TableCell>
-                            {r.capRate ? `${r.capRate}%` : "-"}
-                          </TableCell>
-                        )}
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
+                          {columnVisibility.capRate && (
+                            <TableCell>
+                              {r.capRate ? `${r.capRate}%` : "-"}
+                            </TableCell>
+                          )}
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
             );
           })()
         )}
@@ -981,47 +1095,40 @@ export function normalizeBrokerText(
 ): string[] {
   if (!input) return [];
 
-  try {
-    let cleaned = input.trim();
+  let cleaned = String(input).trim();
 
-    // Remove outer brackets if present
-    if (cleaned.startsWith("[") && cleaned.endsWith("]")) {
-      cleaned = cleaned.slice(1, -1);
-    }
+  if (!cleaned) return [];
 
-    // Replace single quotes → double quotes (to make JSON safe)
-    cleaned = cleaned.replace(/'/g, '"');
-
-    // Try parsing as JSON array
-    let arr: string[] = [];
-
-    if (cleaned.includes(",")) {
-      arr = JSON.parse(`[${cleaned}]`);
-    } else {
-      arr = [cleaned];
-    }
-
-    return arr.map(
-      (item) =>
-        item
-          ?.trim()
-          .replace(/^["']|["']$/g, "") // ✅ remove starting/ending quotes
-          .replace(/\./g, "-"), // ✅ replace dot with dash
-    );
-  } catch (err) {
-    console.error("normalizeBrokerText error:", err);
-
-    // fallback (safe split)
-    return input
-      .replace(/^\[|\]$/g, "")
-      .split(",")
-      .map((x) =>
-        x
-          .trim()
-          .replace(/^["']|["']$/g, "")
-          .replace(/\./g, "-"),
-      );
+  // PostgreSQL array
+  // {"John","Mary"}
+  if (cleaned.startsWith("{") && cleaned.endsWith("}")) {
+    cleaned = cleaned.slice(1, -1);
   }
+
+  // Try JSON array first
+  // ["John","Mary"]
+  if (cleaned.startsWith("[") && cleaned.endsWith("]")) {
+    try {
+      const parsed = JSON.parse(cleaned);
+
+      if (Array.isArray(parsed)) {
+        return parsed.map((x) => String(x).trim()).filter(Boolean);
+      }
+    } catch {
+      // continue to fallback
+    }
+
+    cleaned = cleaned.slice(1, -1);
+  }
+
+  // Remove surrounding quotes if entire value is quoted
+  cleaned = cleaned.replace(/^["']|["']$/g, "");
+
+  // Split comma-separated values
+  return cleaned
+    .split(",")
+    .map((item) => item.trim().replace(/^["']|["']$/g, ""))
+    .filter(Boolean);
 }
 
 function formatTenancyType(value?: string | null): string {
@@ -1040,4 +1147,99 @@ function hasAnyValue(data: any[], field: string) {
     (row) =>
       row[field] !== null && row[field] !== undefined && row[field] !== "",
   );
+}
+
+function getLeaseSize(lease: any): number | null {
+  const size = Number(lease.size);
+
+  if (size > 0) {
+    return size;
+  }
+
+  const rentPsf = Number(lease.rent_psf);
+
+  if (rentPsf <= 0) {
+    return null;
+  }
+
+  const annualRent = Number(lease.annual_rent);
+
+  if (annualRent > 0) {
+    return annualRent / rentPsf;
+  }
+
+  const monthlyRent = Number(lease.monthly_rent);
+
+  if (monthlyRent > 0) {
+    return (monthlyRent * 12) / rentPsf;
+  }
+
+  return null;
+}
+
+function getLeaseRentPsf(lease: any): number | null {
+  const rentPsf = Number(lease.rent_psf);
+
+  if (rentPsf > 0) {
+    return rentPsf;
+  }
+
+  const size = getLeaseSize(lease);
+
+  if (!size || size <= 0) {
+    return null;
+  }
+
+  const annualRent = Number(lease.annual_rent);
+
+  if (annualRent > 0) {
+    return annualRent / size;
+  }
+
+  const monthlyRent = Number(lease.monthly_rent);
+
+  if (monthlyRent > 0) {
+    return (monthlyRent * 12) / size;
+  }
+
+  return null;
+}
+
+function getLeaseAnnualRent(lease: any): number | null {
+  const annualRent = Number(lease.annual_rent);
+
+  if (annualRent > 0) {
+    return annualRent;
+  }
+
+  const monthlyRent = Number(lease.monthly_rent);
+
+  if (monthlyRent > 0) {
+    return monthlyRent * 12;
+  }
+
+  const size = getLeaseSize(lease);
+  const rentPsf = getLeaseRentPsf(lease);
+
+  if (size && rentPsf) {
+    return size * rentPsf;
+  }
+
+  return null;
+}
+
+function getLeaseMonthlyRent(lease: any): number | null {
+  const monthlyRent = Number(lease.monthly_rent);
+
+  if (monthlyRent > 0) {
+    return monthlyRent;
+  }
+
+  const annualRent = getLeaseAnnualRent(lease);
+
+  if (annualRent) {
+    return annualRent / 12;
+  }
+
+  return null;
 }

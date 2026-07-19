@@ -29,6 +29,101 @@ function toUsdString(value: any): string | null {
   })}`;
 }
 
+function getLeaseSize(data: any): number | null {
+  const size = Number(data.size);
+
+  if (size > 0) {
+    return size;
+  }
+
+  const rentPsf = Number(data.rent_psf);
+
+  if (rentPsf <= 0) {
+    return null;
+  }
+
+  const annualRent = Number(data.annual_rent);
+
+  if (annualRent > 0) {
+    return annualRent / rentPsf;
+  }
+
+  const monthlyRent = Number(data.monthly_rent);
+
+  if (monthlyRent > 0) {
+    return (monthlyRent * 12) / rentPsf;
+  }
+
+  return null;
+}
+
+function getLeaseRentPsf(data: any): number | null {
+  const rentPsf = Number(data.rent_psf);
+
+  if (rentPsf > 0) {
+    return rentPsf;
+  }
+
+  const size = getLeaseSize(data);
+
+  if (!size || size <= 0) {
+    return null;
+  }
+
+  const annualRent = Number(data.annual_rent);
+
+  if (annualRent > 0) {
+    return annualRent / size;
+  }
+
+  const monthlyRent = Number(data.monthly_rent);
+
+  if (monthlyRent > 0) {
+    return (monthlyRent * 12) / size;
+  }
+
+  return null;
+}
+
+function getLeaseAnnualRent(data: any): number | null {
+  const annualRent = Number(data.annual_rent);
+
+  if (annualRent > 0) {
+    return annualRent;
+  }
+
+  const monthlyRent = Number(data.monthly_rent);
+
+  if (monthlyRent > 0) {
+    return monthlyRent * 12;
+  }
+
+  const size = getLeaseSize(data);
+  const rentPsf = getLeaseRentPsf(data);
+
+  if (size && rentPsf) {
+    return size * rentPsf;
+  }
+
+  return null;
+}
+
+function getLeaseMonthlyRent(data: any): number | null {
+  const monthlyRent = Number(data.monthly_rent);
+
+  if (monthlyRent > 0) {
+    return monthlyRent;
+  }
+
+  const annualRent = getLeaseAnnualRent(data);
+
+  if (annualRent) {
+    return annualRent / 12;
+  }
+
+  return null;
+}
+
 // ======================================================
 // GET — View Lease (UNCHANGED LOGIC)
 // ======================================================
@@ -70,7 +165,7 @@ export async function GET(
       .select("*")
       .eq("lease_id", leaseId)
       .single();
-    
+
     if (leaseError) throw leaseError;
 
     // 4️⃣ Contacts
@@ -154,10 +249,24 @@ export async function PUT(
       user_id: session.user.id,
     };
 
+    const numericFields = new Set([
+      "price",
+      "annual_rent",
+      "rent_psf",
+      "size",
+      "noi",
+      "pass_tmru",
+    ]);
+
     const assignIfPresent = (key: string, value: any) => {
-      if (key in body) {
-        payload[key] = value === "" ? null : (value ?? null);
+      if (!(key in body)) return;
+
+      if (value === "" || value === null || value === undefined) {
+        payload[key] = null;
+        return;
       }
+
+      payload[key] = numericFields.has(key) ? Number(value) : value;
     };
 
     assignIfPresent("tenant", body.tenant);
@@ -167,6 +276,7 @@ export async function PUT(
     assignIfPresent("lease_end", body.lease_end);
     assignIfPresent("availability_date", body.availability_date);
     assignIfPresent("annual_rent", body.annual_rent);
+    assignIfPresent("size", body.size);
     assignIfPresent("rent_psf", body.rent_psf);
     assignIfPresent("price", body.price);
     assignIfPresent("noi", body.noi);
@@ -175,15 +285,52 @@ export async function PUT(
     assignIfPresent("comments", body.comments);
     assignIfPresent("suite_unit", body.suite_unit);
 
-    // USD fields
-    if ("price" in body) {
-      payload.price_usd = toUsdString(body.price);
-    }
-    if ("annual_rent" in body) {
-      payload.annual_rent_usd = toUsdString(body.annual_rent);
+    // ----------------------------------------------
+    // Load existing lease
+    // ----------------------------------------------
+    const { data: existingLease, error: existingLeaseError } = await supabase
+      .from("lease")
+      .select("*")
+      .eq("lease_id", leaseId)
+      .single();
+
+    if (existingLeaseError) {
+      throw existingLeaseError;
     }
 
-    // 4️⃣ Update lease
+    // ----------------------------------------------
+    // Merge existing values with incoming payload
+    // ----------------------------------------------
+    const calculatedLease = {
+      ...existingLease,
+      ...payload,
+    };
+
+    // ----------------------------------------------
+    // Recalculate financial fields only when needed
+    // ----------------------------------------------
+    const shouldRecalculate =
+      "size" in body || "annual_rent" in body || "rent_psf" in body;
+
+    if (shouldRecalculate) {
+      const calculatedSize = getLeaseSize(calculatedLease);
+      const calculatedRentPsf = getLeaseRentPsf(calculatedLease);
+      const calculatedAnnualRent = getLeaseAnnualRent(calculatedLease);
+
+      payload.size = calculatedSize;
+      payload.rent_psf = calculatedRentPsf;
+      payload.annual_rent = calculatedAnnualRent;
+      payload.annual_rent_usd = toUsdString(calculatedAnnualRent);
+    }
+
+    // Keep price USD synchronized
+    if ("price" in body) {
+      payload.price_usd = toUsdString(payload.price);
+    }
+
+    // ----------------------------------------------
+    // Update lease
+    // ----------------------------------------------
     const { data, error } = await supabase
       .from("lease")
       .update(payload)
