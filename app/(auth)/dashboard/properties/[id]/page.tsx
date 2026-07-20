@@ -568,7 +568,7 @@ export default function PropertyViewPage({
                     <TableRow>
                       <TableHead>Tenant</TableHead>
                       <TableHead>Unit</TableHead>
-                      <TableHead>Size</TableHead>
+                      <TableHead>Size/SF</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Start Date</TableHead>
                       <TableHead>End Date</TableHead>
@@ -594,7 +594,7 @@ export default function PropertyViewPage({
                               ? `${size.toLocaleString(undefined, {
                                   minimumFractionDigits: 0,
                                   maximumFractionDigits: 2,
-                                })} SF`
+                                })}`
                               : "-";
                           })()}
                         </TableCell>
@@ -665,7 +665,7 @@ export default function PropertyViewPage({
                     <TableRow>
                       <TableHead>Tenant</TableHead>
                       <TableHead>Unit</TableHead>
-                      <TableHead>Size</TableHead>
+                      <TableHead>Size/SF</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Start Date</TableHead>
                       <TableHead>End Date</TableHead>
@@ -691,7 +691,7 @@ export default function PropertyViewPage({
                               ? `${size.toLocaleString(undefined, {
                                   minimumFractionDigits: 0,
                                   maximumFractionDigits: 2,
-                                })} SF`
+                                })}`
                               : "-";
                           })()}
                         </TableCell>

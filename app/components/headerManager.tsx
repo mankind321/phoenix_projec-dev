@@ -188,6 +188,12 @@ export const TopHeaderManager: React.FC = () => {
       path: "/dashboard/main",
       icon: <CircleGauge className="w-4 h-4" />,
     },
+    {
+      label: "Review",
+      path: "/dashboard/review",
+      icon: <View className="w-4 h-4" />,
+      badge: reviewCount,
+    },
 
     {
       label: "Audit Trail",
@@ -232,6 +238,12 @@ export const TopHeaderManager: React.FC = () => {
                   {item.icon}
                   <div className="flex items-center justify-between w-full">
                     <span>{item.label}</span>
+
+                    {(item.badge ?? 0) > 0 && (
+                      <span className="ml-2 px-2 py-0.5 text-xs font-semibold bg-red-500 text-white rounded-full">
+                        {item.badge}
+                      </span>
+                    )}
                   </div>
                 </button>
               </li>

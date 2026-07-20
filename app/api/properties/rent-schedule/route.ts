@@ -55,7 +55,7 @@ export async function GET(req: NextRequest) {
     const supabase = createRlsClient(rlsHeaders);
 
     // 5️⃣ Query rent schedule
-    const { data, error } = await supabase
+    const { data, error } = await supabase 
       .from("rentschedule")
       .select(
         `
@@ -87,22 +87,31 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // 6️⃣ Normalize response (optional cleanup)
-    const items = (data ?? []).map((r: any) => ({
-      id: r.rent_id,
-      term: r.term_label,
-      leaseYear: r.lease_year,
-      startDate: r.start_date,
-      startDateRaw: r.start_date_raw,
-      endDate: r.end_date,
-      endDateRaw: r.end_date_raw,
-      monthlyRent: r.monthly_rent,
-      annualRent: r.annual_rent,
-      rentIncreasePercent: r.rent_increase_percent,
-      rentIncreases: r.rent_increases,
-      psf: r.psf,
-      capRate: r.cap_rate,
-    }));
+// 6️⃣ Normalize response and exclude rows without rent values
+const items = (data ?? [])
+  .filter((r: any) => {
+    const monthlyRent = Number(r.monthly_rent) || 0;
+    const annualRent = Number(r.annual_rent) || 0;
+    const psf = Number(r.psf) || 0;
+
+    // Exclude rows where all three values are empty or zero
+    return monthlyRent > 0 || annualRent > 0 || psf > 0;
+  })
+  .map((r: any) => ({
+    id: r.rent_id,
+    term: r.term_label,
+    leaseYear: r.lease_year,
+    startDate: r.start_date,
+    startDateRaw: r.start_date_raw,
+    endDate: r.end_date,
+    endDateRaw: r.end_date_raw,
+    monthlyRent: r.monthly_rent,
+    annualRent: r.annual_rent,
+    rentIncreasePercent: r.rent_increase_percent,
+    rentIncreases: r.rent_increases,
+    psf: r.psf,
+    capRate: r.cap_rate,
+  }));
 
     return NextResponse.json({
       success: true,
