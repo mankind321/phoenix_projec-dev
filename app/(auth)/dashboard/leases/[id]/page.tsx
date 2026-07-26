@@ -332,20 +332,7 @@ export default function LeaseViewPage({
           <InfoItem
             label="Size (SF)"
             type="number"
-            value={
-              isEditing
-                ? draftLease.size
-                : (() => {
-                    const size = getLeaseSize(lease);
-
-                    return size
-                      ? size.toLocaleString(undefined, {
-                          minimumFractionDigits: 0,
-                          maximumFractionDigits: 2,
-                        })
-                      : "—";
-                  })()
-            }
+            value={isEditing ? draftLease.size : (getLeaseSize(lease) ?? "—")}
             editable={isEditing}
             onChange={(v) => setDraftLease({ ...draftLease, size: v })}
           />
@@ -743,7 +730,7 @@ function normalizeNullableText(value: any) {
 }
 
 function getLeaseSize(lease: any): number | null {
-  const size = Number(lease.size);
+  const size = Math.round(Number(lease.size));
 
   if (size > 0) {
     return size;
@@ -758,13 +745,13 @@ function getLeaseSize(lease: any): number | null {
   const annualRent = Number(lease.annual_rent);
 
   if (annualRent > 0) {
-    return annualRent / rentPsf;
+    return Math.round(annualRent / rentPsf);
   }
 
   const monthlyRent = Number(lease.monthly_rent);
 
   if (monthlyRent > 0) {
-    return (monthlyRent * 12) / rentPsf;
+    return Math.round((monthlyRent * 12) / rentPsf);
   }
 
   return null;

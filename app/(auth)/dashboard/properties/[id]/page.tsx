@@ -426,10 +426,7 @@ export default function PropertyViewPage({
               isEditing
                 ? form.size
                 : property.size
-                  ? `${Number(property.size).toLocaleString(undefined, {
-                      minimumFractionDigits: 0,
-                      maximumFractionDigits: 2,
-                    })} SF`
+                  ? `${Math.round(Number(property.size))} SF`
                   : "—"
             }
             editable={isEditing}
@@ -590,12 +587,7 @@ export default function PropertyViewPage({
                           {(() => {
                             const size = getLeaseSize(lease);
 
-                            return size !== null
-                              ? `${size.toLocaleString(undefined, {
-                                  minimumFractionDigits: 0,
-                                  maximumFractionDigits: 2,
-                                })}`
-                              : "-";
+                            return size !== null ? String(size) : "-";
                           })()}
                         </TableCell>
 
@@ -687,12 +679,7 @@ export default function PropertyViewPage({
                           {(() => {
                             const size = getLeaseSize(lease);
 
-                            return size !== null
-                              ? `${size.toLocaleString(undefined, {
-                                  minimumFractionDigits: 0,
-                                  maximumFractionDigits: 2,
-                                })}`
-                              : "-";
+                            return size !== null ? String(size) : "-";
                           })()}
                         </TableCell>
 
@@ -1150,7 +1137,7 @@ function hasAnyValue(data: any[], field: string) {
 }
 
 function getLeaseSize(lease: any): number | null {
-  const size = Number(lease.size);
+  const size = Math.round(Number(lease.size));
 
   if (size > 0) {
     return size;
@@ -1165,13 +1152,13 @@ function getLeaseSize(lease: any): number | null {
   const annualRent = Number(lease.annual_rent);
 
   if (annualRent > 0) {
-    return annualRent / rentPsf;
+    return Math.round(annualRent / rentPsf);
   }
 
   const monthlyRent = Number(lease.monthly_rent);
 
   if (monthlyRent > 0) {
-    return (monthlyRent * 12) / rentPsf;
+    return Math.round((monthlyRent * 12) / rentPsf);
   }
 
   return null;
