@@ -155,25 +155,35 @@ export async function GET(req: Request) {
 
       console.log("🔎 KEYWORDS:", keywords);
 
+      const conditions: string[] = [];
+
       for (const keyword of keywords) {
         const { abbr, full } = normalizeStateValue(keyword);
 
-        const orFilter = [
+        conditions.push(
           `name.ilike.%${keyword}%`,
           `address.ilike.%${keyword}%`,
           `city.ilike.%${keyword}%`,
           `state.ilike.%${keyword}%`,
-          ...(full ? [`state.ilike.%${full}%`] : []),
-          ...(abbr ? [`state.ilike.%${abbr}%`] : []),
           `type.ilike.%${keyword}%`,
           `status.ilike.%${keyword}%`,
           `tenancytype.ilike.%${keyword}%`,
-        ].join(",");
+        );
 
-        console.log(`🔗 OR FILTER (${keyword}):`, orFilter);
+        if (full) {
+          conditions.push(`state.ilike.%${full}%`);
+        }
 
-        query = query.or(orFilter);
+        if (abbr && abbr !== keyword) {
+          conditions.push(`state.ilike.%${abbr}%`);
+        }
       }
+
+      const orFilter = [...new Set(conditions)].join(",");
+
+      console.log("🔗 OR FILTER:", orFilter);
+
+      query = query.or(orFilter);
     }
 
     query = query.order(field, { ascending: sortOrder === "asc" });
