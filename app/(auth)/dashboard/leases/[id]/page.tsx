@@ -330,7 +330,7 @@ export default function LeaseViewPage({
           />
 
           <InfoItem
-            label="Size (SF)"
+            label="Size (Square Feet/SF)"
             type="number"
             value={isEditing ? draftLease.size : (getLeaseSize(lease) ?? "—")}
             editable={isEditing}

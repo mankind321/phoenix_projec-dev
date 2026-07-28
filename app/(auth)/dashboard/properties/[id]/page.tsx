@@ -421,12 +421,12 @@ export default function PropertyViewPage({
           />
 
           <InfoItem
-            label="Property Size"
+            label="Property Size (Square Feet/SF)"
             value={
               isEditing
                 ? form.size
                 : property.size
-                  ? `${Math.round(Number(property.size))} SF`
+                  ? `${Math.round(Number(property.size))}`
                   : "—"
             }
             editable={isEditing}
@@ -565,7 +565,9 @@ export default function PropertyViewPage({
                     <TableRow>
                       <TableHead>Tenant</TableHead>
                       <TableHead>Unit</TableHead>
-                      <TableHead>Size/SF</TableHead>
+<TableHead className="text-center">
+  Square Feet/SF
+</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Start Date</TableHead>
                       <TableHead>End Date</TableHead>
@@ -582,8 +584,7 @@ export default function PropertyViewPage({
                         <TableCell>{display(lease.tenant)}</TableCell>
 
                         <TableCell>{display(lease.suite_unit)}</TableCell>
-
-                        <TableCell>
+                        <TableCell className="text-right pr-10">
                           {(() => {
                             const size = getLeaseSize(lease);
 

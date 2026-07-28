@@ -134,7 +134,7 @@ export async function GET(req: Request) {
 
       console.log("🧹 SANITIZED INPUT:", safe);
 
-      const { abbr, full } = normalizeStateValue(safe);
+      /**const { abbr, full } = normalizeStateValue(safe);
 
       const orFilter = [
         `name.ilike.%${safe}%`,
@@ -150,7 +150,30 @@ export async function GET(req: Request) {
 
       console.log("🔗 OR FILTER:", orFilter);
 
-      query = query.or(orFilter);
+      query = query.or(orFilter);**/
+      const keywords = safe.split(/\s+/).filter(Boolean);
+
+      console.log("🔎 KEYWORDS:", keywords);
+
+      for (const keyword of keywords) {
+        const { abbr, full } = normalizeStateValue(keyword);
+
+        const orFilter = [
+          `name.ilike.%${keyword}%`,
+          `address.ilike.%${keyword}%`,
+          `city.ilike.%${keyword}%`,
+          `state.ilike.%${keyword}%`,
+          ...(full ? [`state.ilike.%${full}%`] : []),
+          ...(abbr ? [`state.ilike.%${abbr}%`] : []),
+          `type.ilike.%${keyword}%`,
+          `status.ilike.%${keyword}%`,
+          `tenancytype.ilike.%${keyword}%`,
+        ].join(",");
+
+        console.log(`🔗 OR FILTER (${keyword}):`, orFilter);
+
+        query = query.or(orFilter);
+      }
     }
 
     query = query.order(field, { ascending: sortOrder === "asc" });
