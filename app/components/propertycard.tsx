@@ -642,17 +642,15 @@ export default function PropertyCardTable() {
                           {p.status ?? "Status unknown"}
                         </div>
 
-                        <div className="font-semibold text-sm">{p.name}</div>
+                        <div className="font-semibold text-sm whitespace-pre-line">
+                          {displayPropertyLines(p.name)}
+                        </div>
+                        <div className="text-gray-600 mt-1 flex items-start gap-1 whitespace-pre-line">
+                          <MapPin size={12} className="mt-0.5 shrink-0" />
 
-                        <div className="text-gray-600 mt-1 flex items-center gap-1">
-                          <MapPin size={12} />
-
-                          {(() => {
-                            const fullAddress = [p.address, p.city, p.state]
-                              .filter((v) => v && v.trim() !== "")
-                              .join(", ");
-                            return fullAddress || "—";
-                          })()}
+                          <span>
+                            {displayPropertyAddressSingle(p.address, p.city, p.state)}
+                          </span>
                         </div>
 
                         <div className="flex justify-between mt-2">
@@ -804,21 +802,17 @@ export default function PropertyCardTable() {
                         <div className="text-[10px] font-semibold text-blue-700 uppercase mb-1">
                           {selectedProperty.status ?? "Status"}
                         </div>
-                        <div className="font-semibold text-sm mb-1">
-                          {selectedProperty.name}
+                        <div className="font-semibold text-sm mb-1 whitespace-pre-line">
+                          {displayPropertyLines(selectedProperty.name)}
                         </div>
                         <div className="text-xs text-gray-600 mb-2">
-                          {(() => {
-                            const fullAddress = [
+                          <div className="whitespace-pre-line">
+                            {displayPropertyAddressSingle(
                               selectedProperty.address,
                               selectedProperty.city,
                               selectedProperty.state,
-                            ]
-                              .filter((v) => v && v.trim() !== "")
-                              .join(", ");
-
-                            return fullAddress || "—";
-                          })()}
+                            )}
+                          </div>
                         </div>
 
                         <Button
@@ -845,8 +839,8 @@ export default function PropertyCardTable() {
           <div className="mt-4 space-y-3">
             <p className="text-sm text-gray-600">
               Property:{" "}
-              <span className="font-semibold">
-                {selectedStatusProperty?.name}
+              <span className="font-semibold whitespace-pre-line">
+                {displayPropertyLines(selectedStatusProperty?.name)}
               </span>
             </p>
 
@@ -948,3 +942,98 @@ function formatTenancyType(value?: string | null): string {
   return map[value] || value;
 }
 
+export function normalizePropertyText(
+  input: string | null | undefined,
+): string[] {
+  if (!input) return [];
+
+  let cleaned = String(input).trim();
+
+  if (!cleaned) return [];
+
+  // PostgreSQL array
+  // {"A","B"}
+  if (cleaned.startsWith("{") && cleaned.endsWith("}")) {
+    cleaned = cleaned.slice(1, -1);
+  }
+
+  // JSON array
+  // ["A","B"]
+  // ['A','B']
+  if (cleaned.startsWith("[") && cleaned.endsWith("]")) {
+    try {
+      const parsed = JSON.parse(cleaned);
+
+      if (Array.isArray(parsed)) {
+        return [
+          ...new Set(parsed.map((x) => String(x).trim()).filter(Boolean)),
+        ];
+      }
+    } catch {
+      cleaned = cleaned.slice(1, -1).replace(/'/g, '"');
+    }
+  }
+
+  return [
+    ...new Set(
+      cleaned
+        .split(",")
+        .map((item) => item.trim().replace(/^["']|["']$/g, ""))
+        .filter(Boolean),
+    ),
+  ];
+}
+
+export function displayProperty(value?: string | null): string {
+  const values = normalizePropertyText(value);
+
+  if (!values.length) return "—";
+
+  return values.join(", ");
+}
+
+export function displayPropertyLines(value?: string | null): string {
+  const values = normalizePropertyText(value);
+
+  if (!values.length) return "—";
+
+  return values.join("\n");
+}
+
+export function displayPropertyAddress(
+  address?: string | null,
+  city?: string | null,
+  state?: string | null,
+): string {
+  const addresses = normalizePropertyText(address);
+  const cities = normalizePropertyText(city);
+  const states = normalizePropertyText(state);
+
+  const count = Math.max(addresses.length, cities.length, states.length);
+
+  const lines: string[] = [];
+
+  for (let i = 0; i < count; i++) {
+    const line = [addresses[i], cities[i], states[i]]
+      .filter(Boolean)
+      .join(", ");
+
+    if (line) {
+      lines.push(line);
+    }
+  }
+
+  return lines.length ? lines.join("\n") : "—";
+}
+
+export function displayPropertyAddressSingle(
+  address?: string | null,
+  city?: string | null,
+  state?: string | null,
+): string {
+  const addresses = normalizePropertyText(address);
+  const cities = normalizePropertyText(city);
+  const states = normalizePropertyText(state);
+
+  return [addresses[0], cities[0], states[0]].filter(Boolean).join(", ") || "—";
+}

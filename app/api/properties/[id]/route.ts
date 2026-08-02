@@ -153,6 +153,49 @@ export async function GET(
     );
 
     // ----------------------------------------------
+    // 5.1 Fetch rent schedules for all leases
+    // ----------------------------------------------
+
+    const leaseIds = [
+      ...(activeLeases ?? []).map((x) => x.lease_id),
+      ...(expiredLeases ?? []).map((x) => x.lease_id),
+    ];
+
+    let rentSchedules: any[] = [];
+
+    if (leaseIds.length > 0) {
+      const { data, error } = await supabase
+        .from("rent_schedule")
+        .select(
+          `
+      rent_schedule_id,
+      lease_id,
+      start_date,
+      end_date,
+      rent_psf
+    `,
+        )
+        .in("lease_id", leaseIds)
+        .order("start_date", { ascending: true });
+
+      if (error) throw error;
+
+      rentSchedules = data ?? [];
+    }
+
+    function attachSchedules(leases: any[]) {
+      return leases.map((lease) => ({
+        ...lease,
+        rent_schedules: rentSchedules.filter(
+          (x) => x.lease_id === lease.lease_id,
+        ),
+      }));
+    }
+
+    const activeWithSchedules = attachSchedules(activeLeases ?? []);
+    const expiredWithSchedules = attachSchedules(expiredLeases ?? []);
+
+    // ----------------------------------------------
     // 6️⃣ Fetch images
     // ----------------------------------------------
     const { data: documents, error: documentError } = await supabase
@@ -225,8 +268,8 @@ export async function GET(
       data: {
         property,
         leases: {
-          active: activeLeases,
-          expired: expiredLeases,
+          active: activeWithSchedules,
+          expired: expiredWithSchedules,
         },
         documents: signedDocuments,
         documentFiles: signedDocumentFiles,
@@ -398,37 +441,33 @@ export async function PUT(
     // ----------------------------------------------
     // 🧠 Normalize payload
     // ----------------------------------------------
-const payload: any = {
-  name: body.name ?? null,
-  type: body.type ?? null,
-  landlord: body.landlord ?? null,
-  status: body.status ?? null,
-  address: body.address ?? null,
-  city: body.city ?? null,
-  state: body.state ?? null,
+    const payload: any = {
+      name: body.name ?? null,
+      type: body.type ?? null,
+      landlord: body.landlord ?? null,
+      status: body.status ?? null,
+      address: body.address ?? null,
+      city: body.city ?? null,
+      state: body.state ?? null,
 
-  // ✅ NEW
-  size:
-    body.size !== undefined &&
-    body.size !== null &&
-    body.size !== ""
-      ? Number(body.size)
-      : null,
+      // ✅ NEW
+      size:
+        body.size !== undefined && body.size !== null && body.size !== ""
+          ? Number(body.size)
+          : null,
 
-  price:
-    body.price !== undefined &&
-    body.price !== null &&
-    body.price !== ""
-      ? Number(body.price)
-      : null,
+      price:
+        body.price !== undefined && body.price !== null && body.price !== ""
+          ? Number(body.price)
+          : null,
 
-  cap_rate: normalizeCapRate(body.cap_rate),
-  sale_date: body.sale_date || null,
-  comments: body.comments ?? null,
-  tenancytype: body.tenancytype ?? null,
-  updated_by: session.user.id,
-  updated_at: new Date().toISOString(),
-};
+      cap_rate: normalizeCapRate(body.cap_rate),
+      sale_date: body.sale_date || null,
+      comments: body.comments ?? null,
+      tenancytype: body.tenancytype ?? null,
+      updated_by: session.user.id,
+      updated_at: new Date().toISOString(),
+    };
 
     // ----------------------------------------------
     // 🔍 Check existing property (INCLUDE ADDRESS)

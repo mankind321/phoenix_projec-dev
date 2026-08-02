@@ -187,7 +187,7 @@ export default function ContactTable() {
                 type="checkbox"
                 className="cursor-pointer"
                 checked={table.getIsAllPageRowsSelected()}
-                onChange={table.getToggleAllPageRowsSelectedHandler()}
+                onChange={() => table.toggleAllPageRowsSelected()}
               />
             </div>
           </Can>

@@ -27,8 +27,18 @@ import {
   Save,
   XCircle,
   Info,
+  Plus,
+  Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 interface LeaseData {
   lease: any;
@@ -57,15 +67,40 @@ export default function LeaseViewPage({
 
   const [downloadingFile, setDownloadingFile] = useState(false);
 
+  const [leaseSchedules, setLeaseSchedules] = useState<any[]>([]);
+
+  const [showAddLeaseDialog, setShowAddLeaseDialog] = useState(false);
+
+  const [showEditLeaseDialog, setShowEditLeaseDialog] = useState(false);
+
+  const [savingLeaseDate, setSavingLeaseDate] = useState(false);
+
+  const [editingLeaseDate, setEditingLeaseDate] = useState<any>(null);
+
+  const [leaseDateForm, setLeaseDateForm] = useState({
+    start_date: "",
+    end_date: "",
+    rent_psf: "",
+  });
+
+  const [showDeleteLeaseDialog, setShowDeleteLeaseDialog] = useState(false);
+
+  const [deletingLeaseSchedule, setDeletingLeaseSchedule] = useState(false);
+
+  const [leaseScheduleToDelete, setLeaseScheduleToDelete] = useState<any>(null);
+
   // ---------------- LOAD LEASE ----------------
   useEffect(() => {
     if (!leaseId) return;
 
     const fetchLease = async () => {
       try {
-        const res = await fetch(`/api/lease/${leaseId}`);
-        const json = await res.json();
-        setData(json.data);
+        const leaseRes = await fetch(`/api/lease/${leaseId}`);
+
+        const leaseJson = await leaseRes.json();
+        setData(leaseJson.data);
+
+        await loadLeaseSchedule();
       } catch (error) {
         console.error("Error loading lease:", error);
       } finally {
@@ -112,6 +147,14 @@ export default function LeaseViewPage({
 
   const handleCancel = () => {
     setDraftLease({ ...data?.lease });
+
+    setShowAddLeaseDialog(false);
+    setShowEditLeaseDialog(false);
+    setShowDeleteLeaseDialog(false);
+
+    setEditingLeaseDate(null);
+    setLeaseScheduleToDelete(null);
+
     setIsEditing(false);
   };
 
@@ -153,6 +196,40 @@ export default function LeaseViewPage({
       toast.error("Failed to download file.");
     } finally {
       setDownloadingFile(false);
+    }
+  };
+
+  const handleDeleteLeaseDate = async () => {
+    if (!leaseScheduleToDelete) return;
+
+    try {
+      setDeletingLeaseSchedule(true);
+
+      const res = await fetch(
+        `/api/lease/${leaseId}/schedule/${leaseScheduleToDelete.rent_schedule_id}`,
+        {
+          method: "DELETE",
+        },
+      );
+
+      const json = await res.json();
+
+      if (!res.ok || !json.success) {
+        toast.error(json.message ?? "Unable to delete lease schedule.");
+        return;
+      }
+
+      toast.success("Lease schedule deleted.");
+
+      setShowDeleteLeaseDialog(false);
+      setLeaseScheduleToDelete(null);
+
+      await loadLeaseSchedule();
+    } catch (err) {
+      console.error(err);
+      toast.error("Unexpected error.");
+    } finally {
+      setDeletingLeaseSchedule(false);
     }
   };
 
@@ -220,6 +297,13 @@ export default function LeaseViewPage({
       );
 
       setIsEditing(false);
+
+      setShowAddLeaseDialog(false);
+      setShowEditLeaseDialog(false);
+      setShowDeleteLeaseDialog(false);
+
+      setEditingLeaseDate(null);
+      setLeaseScheduleToDelete(null);
       toast.success("Lease updated successfully");
     } catch (err) {
       console.error("PUT failed", err);
@@ -241,6 +325,131 @@ export default function LeaseViewPage({
       property_address: selected.property_address,
       property_landlord: selected.property_landlord,
     });
+  };
+
+  const handleAddLeaseDate = async () => {
+    try {
+      if (!leaseDateForm.start_date) {
+        toast.error("Start Date is required.");
+        return;
+      }
+
+      if (!leaseDateForm.rent_psf) {
+        toast.error("Rent PSF is required.");
+        return;
+      }
+      setSavingLeaseDate(true);
+
+      const res = await fetch(`/api/lease/${leaseId}/schedule`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          start_date: leaseDateForm.start_date,
+          end_date: leaseDateForm.end_date,
+          rent_psf:
+            leaseDateForm.rent_psf === ""
+              ? null
+              : Number(leaseDateForm.rent_psf),
+        }),
+      });
+
+      const json = await res.json();
+
+      if (!res.ok || !json.success) {
+        toast.error(json.message ?? "Unable to add lease schedule.");
+        return;
+      }
+
+      toast.success("Lease schedule added.");
+
+      setLeaseDateForm({
+        start_date: "",
+        end_date: "",
+        rent_psf: "",
+      });
+
+      setShowAddLeaseDialog(false);
+
+      await loadLeaseSchedule();
+    } catch (err) {
+      console.error(err);
+      toast.error("Unexpected error.");
+    } finally {
+      setSavingLeaseDate(false);
+    }
+  };
+
+  const handleUpdateLeaseDate = async () => {
+    if (!editingLeaseDate) return;
+
+    if (!leaseDateForm.start_date) {
+      toast.error("Start Date is required.");
+      return;
+    }
+
+    if (!leaseDateForm.rent_psf) {
+      toast.error("Rent PSF is required.");
+      return;
+    }
+
+    try {
+      setSavingLeaseDate(true);
+
+      const res = await fetch(
+        `/api/lease/${leaseId}/schedule/${editingLeaseDate.rent_schedule_id}`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            start_date: leaseDateForm.start_date,
+            end_date: leaseDateForm.end_date || null,
+            rent_psf: Number(leaseDateForm.rent_psf),
+          }),
+        },
+      );
+
+      const json = await res.json();
+
+      if (!res.ok || !json.success) {
+        toast.error(json.message ?? "Unable to update lease schedule.");
+        return;
+      }
+
+      toast.success("Lease schedule updated.");
+
+      setLeaseDateForm({
+        start_date: "",
+        end_date: "",
+        rent_psf: "",
+      });
+
+      setEditingLeaseDate(null);
+      setShowEditLeaseDialog(false);
+
+      await loadLeaseSchedule();
+    } catch (err) {
+      console.error(err);
+      toast.error("Unexpected error.");
+    } finally {
+      setSavingLeaseDate(false);
+    }
+  };
+
+  const loadLeaseSchedule = async () => {
+    try {
+      const res = await fetch(`/api/lease/${leaseId}/schedule`);
+      const json = await res.json();
+
+      if (json.success) {
+        setLeaseSchedules(json.items ?? []);
+      }
+    } catch (err) {
+      console.error("Failed to load lease schedule", err);
+    }
   };
 
   // ---------------- GUARDS ----------------
@@ -423,33 +632,124 @@ export default function LeaseViewPage({
 
       {/* DATES */}
       <InfoSection icon={<CalendarDays />} title="Lease Dates">
-        <Grid2>
-          <InfoItem
-            label="Start Date"
-            type="date"
-            value={isEditing ? draftLease.lease_start : lease.lease_start}
-            editable={isEditing}
-            onChange={(v) => setDraftLease({ ...draftLease, lease_start: v })}
-          />
-          <InfoItem
-            label="End Date"
-            type="date"
-            value={isEditing ? draftLease.lease_end : lease.lease_end}
-            editable={isEditing}
-            onChange={(v) => setDraftLease({ ...draftLease, lease_end: v })}
-          />
-          <InfoItem
-            label="Availability Date"
-            type="date"
-            value={
-              isEditing ? draftLease.availability_date : lease.availability_date
-            }
-            editable={isEditing}
-            onChange={(v) =>
-              setDraftLease({ ...draftLease, availability_date: v })
-            }
-          />
-        </Grid2>
+        <div className="flex justify-end mb-6">
+          <Button
+            disabled={!isEditing}
+            className="bg-blue-600 hover:bg-blue-700 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            onClick={() => {
+              if (!isEditing) return;
+
+              setLeaseDateForm({
+                start_date: "",
+                end_date: "",
+                rent_psf: "",
+              });
+
+              setShowAddLeaseDialog(true);
+            }}
+          >
+            <Plus className="w-4 h-4" />
+            Add Lease Dates
+          </Button>
+        </div>
+
+        <div className="rounded-lg border overflow-hidden">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-16">#</TableHead>
+
+                <TableHead>Start Date</TableHead>
+
+                <TableHead>End Date</TableHead>
+
+                <TableHead>Rent PSF</TableHead>
+
+                <TableHead className="text-center w-48">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+
+            <TableBody>
+              {leaseSchedules.length === 0 ? (
+                <TableRow>
+                  <TableCell
+                    colSpan={5}
+                    className="text-center py-8 text-gray-500"
+                  >
+                    No lease dates found.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                leaseSchedules.map((item, index) => (
+                  <TableRow key={item.rent_schedule_id}>
+                    <TableCell>{index + 1}</TableCell>
+
+                    <TableCell>
+                      {new Date(item.start_date).toLocaleDateString()}
+                    </TableCell>
+                    <TableCell>
+                      {item.end_date
+                        ? new Date(item.end_date).toLocaleDateString()
+                        : "—"}
+                    </TableCell>
+                    <TableCell>
+                      {item.rent_psf
+                        ? `$${Number(item.rent_psf).toLocaleString(undefined, {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })}`
+                        : "—"}
+                    </TableCell>
+
+                    <TableCell>
+                      <div className="flex justify-center gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={!isEditing}
+                          className="disabled:opacity-50 disabled:cursor-not-allowed"
+                          onClick={() => {
+                            if (!isEditing) return;
+
+                            setEditingLeaseDate(item);
+
+                            setLeaseDateForm({
+                              start_date:
+                                item.start_date?.substring(0, 10) ?? "",
+                              end_date: item.end_date?.substring(0, 10) ?? "",
+                              rent_psf: item.rent_psf?.toString() ?? "",
+                            });
+
+                            setShowEditLeaseDialog(true);
+                          }}
+                        >
+                          <Pencil className="w-4 h-4 mr-1" />
+                          Edit
+                        </Button>
+
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          disabled={!isEditing}
+                          className="disabled:opacity-50 disabled:cursor-not-allowed"
+                          onClick={() => {
+                            if (!isEditing) return;
+
+                            setLeaseScheduleToDelete(item);
+                            setShowDeleteLeaseDialog(true);
+                          }}
+                        >
+                          <Trash2 className="w-4 h-4 mr-1" />
+                          Delete
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
       </InfoSection>
 
       {/* FINANCIAL */}
@@ -632,6 +932,177 @@ export default function LeaseViewPage({
         <ArrowLeft className="w-4 h-4" />
         Back
       </Button>
+
+      <Dialog
+        open={showAddLeaseDialog || showEditLeaseDialog}
+        onOpenChange={(open) => {
+          if (!open) {
+            setShowAddLeaseDialog(false);
+            setShowEditLeaseDialog(false);
+            setEditingLeaseDate(null);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {editingLeaseDate ? (
+                <>
+                  <Pencil className="w-5 h-5 text-blue-600" />
+                  Edit Lease Dates
+                </>
+              ) : (
+                <>
+                  <Plus className="w-5 h-5 text-green-600" />
+                  Add Lease Dates
+                </>
+              )}
+            </DialogTitle>
+
+            <DialogDescription>
+              {editingLeaseDate
+                ? "Update the lease schedule."
+                : "Add a lease period and its Rent PSF."}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-5">
+            <InfoItem
+              label="Start Date"
+              type="date"
+              editable
+              value={leaseDateForm.start_date}
+              onChange={(v) =>
+                setLeaseDateForm({
+                  ...leaseDateForm,
+                  start_date: v,
+                })
+              }
+            />
+
+            <InfoItem
+              label="End Date"
+              type="date"
+              editable
+              value={leaseDateForm.end_date}
+              onChange={(v) =>
+                setLeaseDateForm({
+                  ...leaseDateForm,
+                  end_date: v,
+                })
+              }
+            />
+
+            <InfoItem
+              label="Rent PSF"
+              type="number"
+              editable
+              value={leaseDateForm.rent_psf}
+              onChange={(v) =>
+                setLeaseDateForm({
+                  ...leaseDateForm,
+                  rent_psf: v,
+                })
+              }
+            />
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowAddLeaseDialog(false);
+                setShowEditLeaseDialog(false);
+                setEditingLeaseDate(null);
+
+                setLeaseDateForm({
+                  start_date: "",
+                  end_date: "",
+                  rent_psf: "",
+                });
+              }}
+            >
+              <XCircle className="w-4 h-4 mr-2" />
+              Cancel
+            </Button>
+
+            <Button
+              className="bg-blue-600 hover:bg-blue-700"
+              onClick={
+                editingLeaseDate ? handleUpdateLeaseDate : handleAddLeaseDate
+              }
+              disabled={savingLeaseDate}
+            >
+              <Save className="w-4 h-4 mr-2" />
+              {savingLeaseDate ? "Saving..." : "Save"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={showDeleteLeaseDialog}
+        onOpenChange={(open) => {
+          if (!open) {
+            setShowDeleteLeaseDialog(false);
+            setLeaseScheduleToDelete(null);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600">
+              <Trash2 className="w-5 h-5" />
+              Delete Lease Schedule
+            </DialogTitle>
+
+            <DialogDescription>
+              Are you sure you want to delete this lease schedule?
+              <br />
+              <br />
+              <span className="font-medium">
+                {leaseScheduleToDelete?.start_date &&
+                  new Date(
+                    leaseScheduleToDelete.start_date,
+                  ).toLocaleDateString()}
+              </span>{" "}
+              to{" "}
+              <span className="font-medium">
+                {leaseScheduleToDelete?.end_date
+                  ? new Date(
+                      leaseScheduleToDelete.end_date,
+                    ).toLocaleDateString()
+                  : "Open Ended"}
+              </span>
+              <br />
+              <br />
+              This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowDeleteLeaseDialog(false);
+                setLeaseScheduleToDelete(null);
+              }}
+            >
+              <XCircle className="w-4 h-4 mr-2" />
+              Cancel
+            </Button>
+
+            <Button
+              variant="destructive"
+              onClick={handleDeleteLeaseDate}
+              disabled={deletingLeaseSchedule}
+            >
+              <Trash2 className="w-4 h-4 mr-2" />
+              {deletingLeaseSchedule ? "Deleting..." : "Delete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

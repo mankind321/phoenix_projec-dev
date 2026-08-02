@@ -37,6 +37,16 @@ import {
 } from "lucide-react";
 import { Can } from "@/app/components/can";
 
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
+import { Badge } from "@/components/ui/badge";
+
 interface PropertyData {
   property: any;
   leases: {
@@ -72,6 +82,10 @@ export default function PropertyViewPage({
   const [saving, setSaving] = useState(false);
 
   const [rentSchedule, setRentSchedule] = useState<any[]>([]);
+
+  const [selectedSchedules, setSelectedSchedules] = useState<
+    Record<string, string>
+  >({});
 
   const [leaseCounts, setLeaseCounts] = useState({
     active: 0,
@@ -112,6 +126,20 @@ export default function PropertyViewPage({
 
         if (json.success) {
           setData(json.data);
+
+          const defaults: Record<string, string> = {};
+
+          [
+            ...(json.data.leases.active ?? []),
+            ...(json.data.leases.expired ?? []),
+          ].forEach((lease: any) => {
+            if (lease.rent_schedules?.length) {
+              defaults[lease.lease_id] =
+                lease.rent_schedules[0].rent_schedule_id;
+            }
+          });
+
+          setSelectedSchedules(defaults);
 
           const p = json.data.property;
 
@@ -332,6 +360,16 @@ export default function PropertyViewPage({
       : encodeURIComponent(
           `${property.address}, ${property.city}, ${property.state}`,
         );
+
+  const getSelectedSchedule = (lease: any) => {
+    if (!lease.rent_schedules?.length) return null;
+
+    return (
+      lease.rent_schedules.find(
+        (x: any) => x.rent_schedule_id === selectedSchedules[lease.lease_id],
+      ) ?? lease.rent_schedules[0]
+    );
+  };
 
   return (
     <div className="w-11/12 mx-auto mt-10 space-y-10">
@@ -565,12 +603,11 @@ export default function PropertyViewPage({
                     <TableRow>
                       <TableHead>Tenant</TableHead>
                       <TableHead>Unit</TableHead>
-<TableHead className="text-center">
-  Square Feet/SF
-</TableHead>
+                      <TableHead className="text-center">
+                        Square Feet/SF
+                      </TableHead>
                       <TableHead>Status</TableHead>
-                      <TableHead>Start Date</TableHead>
-                      <TableHead>End Date</TableHead>
+                      <TableHead className="w-[260px]">Lease Period</TableHead>
                       <TableHead>PSF</TableHead>
                       <TableHead>Monthly Rent</TableHead>
                       <TableHead>Annual Rent</TableHead>
@@ -592,15 +629,64 @@ export default function PropertyViewPage({
                           })()}
                         </TableCell>
 
-                        <TableCell>{display(lease.status)}</TableCell>
+                        <TableCell>
+                          <Badge
+                            className={
+                              lease.status === "Occupied"
+                                ? "bg-green-100 text-green-700 hover:bg-green-100"
+                                : lease.status === "Available"
+                                  ? "bg-blue-100 text-blue-700 hover:bg-blue-100"
+                                  : "bg-red-100 text-red-700 hover:bg-red-100"
+                            }
+                          >
+                            {lease.status}
+                          </Badge>
+                        </TableCell>
 
-                        <TableCell>{display(lease.lease_start)}</TableCell>
+                        <TableCell>
+                          <Select
+                            value={selectedSchedules[lease.lease_id]}
+                            onValueChange={(value) => {
+                              setSelectedSchedules((prev) => ({
+                                ...prev,
 
-                        <TableCell>{display(lease.lease_end)}</TableCell>
+                                [lease.lease_id]: value,
+                              }));
+                            }}
+                          >
+                            <SelectTrigger className="w-[240px]">
+                              <SelectValue />
+                            </SelectTrigger>
+
+                            <SelectContent>
+                              {lease.rent_schedules?.map((schedule: any) => (
+                                <SelectItem
+                                  key={schedule.rent_schedule_id}
+                                  value={schedule.rent_schedule_id}
+                                >
+                                  {new Date(
+                                    schedule.start_date,
+                                  ).toLocaleDateString()}
+
+                                  {" - "}
+
+                                  {schedule.end_date
+                                    ? new Date(
+                                        schedule.end_date,
+                                      ).toLocaleDateString()
+                                    : "Open Ended"}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </TableCell>
 
                         <TableCell>
                           {(() => {
-                            const psf = getLeaseRentPsf(lease);
+                            const schedule = getSelectedSchedule(lease);
+
+                            const psf =
+                              schedule?.rent_psf ?? getLeaseRentPsf(lease);
 
                             return psf != null
                               ? `$${psf.toLocaleString(undefined, {
@@ -613,7 +699,14 @@ export default function PropertyViewPage({
 
                         <TableCell>
                           {(() => {
-                            const monthlyRent = getLeaseMonthlyRent(lease);
+                            const schedule = getSelectedSchedule(lease);
+
+                            const size = getLeaseSize(lease);
+
+                            const monthlyRent =
+                              schedule && size
+                                ? (schedule.rent_psf * size) / 12
+                                : getLeaseMonthlyRent(lease);
 
                             return monthlyRent ? formatUSD(monthlyRent) : "-";
                           })()}
@@ -621,7 +714,14 @@ export default function PropertyViewPage({
 
                         <TableCell>
                           {(() => {
-                            const annualRent = getLeaseAnnualRent(lease);
+                            const schedule = getSelectedSchedule(lease);
+
+                            const size = getLeaseSize(lease);
+
+                            const annualRent =
+                              schedule && size
+                                ? schedule.rent_psf * size
+                                : getLeaseAnnualRent(lease);
 
                             return annualRent ? formatUSD(annualRent) : "-";
                           })()}
@@ -1034,7 +1134,7 @@ function InfoItem({
         )
       ) : (
         <p className="border rounded-md bg-gray-50 px-3 py-2 text-gray-800 text-sm">
-          {value || "—"}
+        {formatDisplayValue(value)}
         </p>
       )}
     </div>
@@ -1230,4 +1330,28 @@ function getLeaseMonthlyRent(lease: any): number | null {
   }
 
   return null;
+}
+
+function formatDisplayValue(value: any): string {
+  if (value == null || value === "") return "—";
+
+  if (Array.isArray(value)) {
+    return [...new Set(value)]
+      .filter(Boolean)
+      .join(", ");
+  }
+
+  const text = String(value).trim();
+
+  // PostgreSQL array
+  if (
+    (text.startsWith("{") && text.endsWith("}")) ||
+    (text.startsWith("[") && text.endsWith("]"))
+  ) {
+    const values = normalizeBrokerText(text);
+
+    return [...new Set(values)].join(", ");
+  }
+
+  return text;
 }
