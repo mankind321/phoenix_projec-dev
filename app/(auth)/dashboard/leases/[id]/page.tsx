@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/exhaustive-deps */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
@@ -40,6 +41,13 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+
 interface LeaseData {
   lease: any;
   contacts: any[];
@@ -66,14 +74,17 @@ export default function LeaseViewPage({
   const [saving, setSaving] = useState(false);
 
   const [downloadingFile, setDownloadingFile] = useState(false);
-
   const [leaseSchedules, setLeaseSchedules] = useState<any[]>([]);
+
+  const [leaseScheduleChanges, setLeaseScheduleChanges] = useState({
+    added: [] as any[],
+    updated: [] as any[],
+    deleted: [] as any[],
+  });
 
   const [showAddLeaseDialog, setShowAddLeaseDialog] = useState(false);
 
   const [showEditLeaseDialog, setShowEditLeaseDialog] = useState(false);
-
-  const [savingLeaseDate, setSavingLeaseDate] = useState(false);
 
   const [editingLeaseDate, setEditingLeaseDate] = useState<any>(null);
 
@@ -85,9 +96,15 @@ export default function LeaseViewPage({
 
   const [showDeleteLeaseDialog, setShowDeleteLeaseDialog] = useState(false);
 
-  const [deletingLeaseSchedule, setDeletingLeaseSchedule] = useState(false);
-
   const [leaseScheduleToDelete, setLeaseScheduleToDelete] = useState<any>(null);
+
+  const [originalLeaseSchedules, setOriginalLeaseSchedules] = useState<any[]>(
+    [],
+  );
+  const pendingLeaseDateChanges =
+    leaseScheduleChanges.added.length +
+    leaseScheduleChanges.updated.length +
+    leaseScheduleChanges.deleted.length;
 
   // ---------------- LOAD LEASE ----------------
   useEffect(() => {
@@ -148,6 +165,14 @@ export default function LeaseViewPage({
   const handleCancel = () => {
     setDraftLease({ ...data?.lease });
 
+    setLeaseSchedules(originalLeaseSchedules.map((x: any) => ({ ...x })));
+
+    setLeaseScheduleChanges({
+      added: [],
+      updated: [],
+      deleted: [],
+    });
+
     setShowAddLeaseDialog(false);
     setShowEditLeaseDialog(false);
     setShowDeleteLeaseDialog(false);
@@ -199,40 +224,56 @@ export default function LeaseViewPage({
     }
   };
 
-  const handleDeleteLeaseDate = async () => {
+  const handleDeleteLeaseDate = () => {
     if (!leaseScheduleToDelete) return;
 
-    try {
-      setDeletingLeaseSchedule(true);
+    const isNew = String(leaseScheduleToDelete.rent_schedule_id).startsWith(
+      "new-",
+    );
 
-      const res = await fetch(
-        `/api/lease/${leaseId}/schedule/${leaseScheduleToDelete.rent_schedule_id}`,
-        {
-          method: "DELETE",
-        },
-      );
+    // Remove from the table
+    setLeaseSchedules((prev) =>
+      prev.filter(
+        (item) =>
+          item.rent_schedule_id !== leaseScheduleToDelete.rent_schedule_id,
+      ),
+    );
 
-      const json = await res.json();
+    if (isNew) {
+      // Remove from pending added list
+      setLeaseScheduleChanges((prev) => ({
+        ...prev,
+        added: prev.added.filter(
+          (item) =>
+            item.rent_schedule_id !== leaseScheduleToDelete.rent_schedule_id,
+        ),
+      }));
+    } else {
+      setLeaseScheduleChanges((prev) => ({
+        ...prev,
 
-      if (!res.ok || !json.success) {
-        toast.error(json.message ?? "Unable to delete lease schedule.");
-        return;
-      }
+        // Remove from updated list if it was edited before deleting
+        updated: prev.updated.filter(
+          (item) =>
+            item.rent_schedule_id !== leaseScheduleToDelete.rent_schedule_id,
+        ),
 
-      toast.success("Lease schedule deleted.");
-
-      setShowDeleteLeaseDialog(false);
-      setLeaseScheduleToDelete(null);
-
-      await loadLeaseSchedule();
-    } catch (err) {
-      console.error(err);
-      toast.error("Unexpected error.");
-    } finally {
-      setDeletingLeaseSchedule(false);
+        // Add to deleted list (avoid duplicates)
+        deleted: [
+          ...prev.deleted.filter(
+            (item) =>
+              item.rent_schedule_id !== leaseScheduleToDelete.rent_schedule_id,
+          ),
+          leaseScheduleToDelete,
+        ],
+      }));
     }
-  };
 
+    toast.success("Lease schedule marked for deletion.");
+
+    setLeaseScheduleToDelete(null);
+    setShowDeleteLeaseDialog(false);
+  };
   const handleSave = async () => {
     if (saving) return;
 
@@ -241,7 +282,7 @@ export default function LeaseViewPage({
 
       const dirtyPayload = buildDirtyPayload(data!.lease, draftLease);
 
-      // ✅ normalize comments
+      // Normalize comments
       const normalizedDraftComments = normalizeNullableText(
         draftLease.comments,
       );
@@ -253,7 +294,7 @@ export default function LeaseViewPage({
         dirtyPayload.comments = normalizedDraftComments;
       }
 
-      // ✅ normalize numeric fields
+      // Normalize numeric fields
       const numericFields = [
         "price",
         "annual_rent",
@@ -265,6 +306,7 @@ export default function LeaseViewPage({
       numericFields.forEach((field) => {
         if (field in dirtyPayload) {
           const value = dirtyPayload[field];
+
           dirtyPayload[field] =
             value === "" || value === null || value === undefined
               ? null
@@ -272,31 +314,130 @@ export default function LeaseViewPage({
         }
       });
 
-      if (Object.keys(dirtyPayload).length === 0) {
+      const hasLeaseChanges = Object.keys(dirtyPayload).length > 0;
+
+      const hasScheduleChanges =
+        leaseScheduleChanges.added.length > 0 ||
+        leaseScheduleChanges.updated.length > 0 ||
+        leaseScheduleChanges.deleted.length > 0;
+
+      if (!hasLeaseChanges && !hasScheduleChanges) {
         toast.info("No changes to save");
         return;
       }
 
-      const res = await fetch(`/api/lease/${leaseId}`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(dirtyPayload),
-      });
+      // ---------------------------------------------------
+      // SAVE LEASE
+      // ---------------------------------------------------
+      if (hasLeaseChanges) {
+        const res = await fetch(`/api/lease/${leaseId}`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(dirtyPayload),
+        });
 
-      const json = await res.json();
+        const json = await res.json();
 
-      if (!res.ok || !json.success) {
-        toast.error(json.message || "Failed to update lease");
-        return;
+        if (!res.ok || !json.success) {
+          toast.error(json.message || "Failed to update lease");
+          return;
+        }
+
+        setData((prev) =>
+          prev
+            ? {
+                ...prev,
+                lease: {
+                  ...prev.lease,
+                  ...dirtyPayload,
+                },
+              }
+            : prev,
+        );
       }
 
-      setData((prev) =>
-        prev ? { ...prev, lease: { ...prev.lease, ...dirtyPayload } } : prev,
-      );
+      // ---------------------------------------------------
+      // ADD LEASE SCHEDULES
+      // ---------------------------------------------------
+      for (const item of leaseScheduleChanges.added) {
+        const res = await fetch(`/api/lease/${leaseId}/schedule`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            start_date: item.start_date,
+            end_date: item.end_date,
+            rent_psf: item.rent_psf,
+          }),
+        });
 
-      setIsEditing(false);
+        const json = await res.json();
+
+        if (!res.ok || !json.success) {
+          toast.error(json.message ?? "Unable to add lease schedule.");
+          return;
+        }
+      }
+
+      // ---------------------------------------------------
+      // UPDATE LEASE SCHEDULES
+      // ---------------------------------------------------
+      for (const item of leaseScheduleChanges.updated) {
+        const res = await fetch(
+          `/api/lease/${leaseId}/schedule/${item.rent_schedule_id}`,
+          {
+            method: "PUT",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              start_date: item.start_date,
+              end_date: item.end_date,
+              rent_psf: item.rent_psf,
+            }),
+          },
+        );
+
+        const json = await res.json();
+
+        if (!res.ok || !json.success) {
+          toast.error(json.message ?? "Unable to update lease schedule.");
+          return;
+        }
+      }
+
+      // ---------------------------------------------------
+      // DELETE LEASE SCHEDULES
+      // ---------------------------------------------------
+      for (const item of leaseScheduleChanges.deleted) {
+        const res = await fetch(
+          `/api/lease/${leaseId}/schedule/${item.rent_schedule_id}`,
+          {
+            method: "DELETE",
+          },
+        );
+
+        const json = await res.json();
+
+        if (!res.ok || !json.success) {
+          toast.error(json.message ?? "Unable to delete lease schedule.");
+          return;
+        }
+      }
+
+      // ---------------------------------------------------
+      // RESET
+      // ---------------------------------------------------
+      setLeaseScheduleChanges({
+        added: [],
+        updated: [],
+        deleted: [],
+      });
+
+      await loadLeaseSchedule();
 
       setShowAddLeaseDialog(false);
       setShowEditLeaseDialog(false);
@@ -304,6 +445,9 @@ export default function LeaseViewPage({
 
       setEditingLeaseDate(null);
       setLeaseScheduleToDelete(null);
+
+      setIsEditing(false);
+
       toast.success("Lease updated successfully");
     } catch (err) {
       console.error("PUT failed", err);
@@ -327,61 +471,46 @@ export default function LeaseViewPage({
     });
   };
 
-  const handleAddLeaseDate = async () => {
-    try {
-      if (!leaseDateForm.start_date) {
-        toast.error("Start Date is required.");
-        return;
-      }
-
-      if (!leaseDateForm.rent_psf) {
-        toast.error("Rent PSF is required.");
-        return;
-      }
-      setSavingLeaseDate(true);
-
-      const res = await fetch(`/api/lease/${leaseId}/schedule`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          start_date: leaseDateForm.start_date,
-          end_date: leaseDateForm.end_date,
-          rent_psf:
-            leaseDateForm.rent_psf === ""
-              ? null
-              : Number(leaseDateForm.rent_psf),
-        }),
-      });
-
-      const json = await res.json();
-
-      if (!res.ok || !json.success) {
-        toast.error(json.message ?? "Unable to add lease schedule.");
-        return;
-      }
-
-      toast.success("Lease schedule added.");
-
-      setLeaseDateForm({
-        start_date: "",
-        end_date: "",
-        rent_psf: "",
-      });
-
-      setShowAddLeaseDialog(false);
-
-      await loadLeaseSchedule();
-    } catch (err) {
-      console.error(err);
-      toast.error("Unexpected error.");
-    } finally {
-      setSavingLeaseDate(false);
+  const handleAddLeaseDate = () => {
+    if (!leaseDateForm.start_date) {
+      toast.error("Start Date is required.");
+      return;
     }
+
+    if (!leaseDateForm.rent_psf) {
+      toast.error("Rent PSF is required.");
+      return;
+    }
+
+    const newSchedule = {
+      rent_schedule_id: `new-${Date.now()}`,
+      start_date: leaseDateForm.start_date,
+      end_date: leaseDateForm.end_date || null,
+      rent_psf: Number(leaseDateForm.rent_psf),
+      __state: "added",
+    };
+
+    // Show immediately in the table
+    setLeaseSchedules((prev) => [...prev, newSchedule]);
+
+    // Track pending add
+    setLeaseScheduleChanges((prev) => ({
+      ...prev,
+      added: [...prev.added, newSchedule],
+    }));
+
+    toast.success("Lease schedule added. Click Save to apply changes.");
+
+    setLeaseDateForm({
+      start_date: "",
+      end_date: "",
+      rent_psf: "",
+    });
+
+    setShowAddLeaseDialog(false);
   };
 
-  const handleUpdateLeaseDate = async () => {
+  const handleUpdateLeaseDate = () => {
     if (!editingLeaseDate) return;
 
     if (!leaseDateForm.start_date) {
@@ -394,49 +523,56 @@ export default function LeaseViewPage({
       return;
     }
 
-    try {
-      setSavingLeaseDate(true);
+    const updatedSchedule = {
+      ...editingLeaseDate,
+      start_date: leaseDateForm.start_date,
+      end_date: leaseDateForm.end_date || null,
+      rent_psf: Number(leaseDateForm.rent_psf),
+    };
 
-      const res = await fetch(
-        `/api/lease/${leaseId}/schedule/${editingLeaseDate.rent_schedule_id}`,
-        {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            start_date: leaseDateForm.start_date,
-            end_date: leaseDateForm.end_date || null,
-            rent_psf: Number(leaseDateForm.rent_psf),
-          }),
-        },
-      );
+    // Update table immediately
+    setLeaseSchedules((prev) =>
+      prev.map((item) =>
+        item.rent_schedule_id === updatedSchedule.rent_schedule_id
+          ? updatedSchedule
+          : item,
+      ),
+    );
 
-      const json = await res.json();
-
-      if (!res.ok || !json.success) {
-        toast.error(json.message ?? "Unable to update lease schedule.");
-        return;
-      }
-
-      toast.success("Lease schedule updated.");
-
-      setLeaseDateForm({
-        start_date: "",
-        end_date: "",
-        rent_psf: "",
-      });
-
-      setEditingLeaseDate(null);
-      setShowEditLeaseDialog(false);
-
-      await loadLeaseSchedule();
-    } catch (err) {
-      console.error(err);
-      toast.error("Unexpected error.");
-    } finally {
-      setSavingLeaseDate(false);
+    // If it's a newly-added row, update it in the "added" list only
+    if (String(updatedSchedule.rent_schedule_id).startsWith("new-")) {
+      setLeaseScheduleChanges((prev) => ({
+        ...prev,
+        added: prev.added.map((item) =>
+          item.rent_schedule_id === updatedSchedule.rent_schedule_id
+            ? updatedSchedule
+            : item,
+        ),
+      }));
+    } else {
+      // Existing DB record → mark as updated
+      setLeaseScheduleChanges((prev) => ({
+        ...prev,
+        updated: [
+          ...prev.updated.filter(
+            (item) =>
+              item.rent_schedule_id !== updatedSchedule.rent_schedule_id,
+          ),
+          updatedSchedule,
+        ],
+      }));
     }
+
+    toast.success("Lease schedule updated. Click Save to apply changes.");
+
+    setLeaseDateForm({
+      start_date: "",
+      end_date: "",
+      rent_psf: "",
+    });
+
+    setEditingLeaseDate(null);
+    setShowEditLeaseDialog(false);
   };
 
   const loadLeaseSchedule = async () => {
@@ -445,7 +581,13 @@ export default function LeaseViewPage({
       const json = await res.json();
 
       if (json.success) {
-        setLeaseSchedules(json.items ?? []);
+        const schedules = (json.items ?? []).map((x: any) => ({
+          ...x,
+        }));
+
+        setLeaseSchedules(schedules);
+
+        setOriginalLeaseSchedules(schedules.map((x: any) => ({ ...x })));
       }
     } catch (err) {
       console.error("Failed to load lease schedule", err);
@@ -498,7 +640,12 @@ export default function LeaseViewPage({
             <>
               <Button
                 onClick={handleSave}
-                disabled={saving}
+                disabled={
+                  saving ||
+                  (Object.keys(buildDirtyPayload(data!.lease, draftLease))
+                    .length === 0 &&
+                    pendingLeaseDateChanges === 0)
+                }
                 className="bg-green-600 hover:bg-green-700 disabled:opacity-50"
               >
                 <Save className="w-4 h-4" />
@@ -631,67 +778,114 @@ export default function LeaseViewPage({
       </InfoSection>
 
       {/* DATES */}
-      <InfoSection icon={<CalendarDays />} title="Lease Dates">
+      <InfoSection
+        icon={<CalendarDays />}
+        title={
+          <div className="flex items-center gap-2">
+            <span>Lease Dates</span>
+
+            {!isEditing && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Info className="h-4 w-4 cursor-pointer text-blue-500 hover:text-blue-700" />
+                  </TooltipTrigger>
+
+                  <TooltipContent>
+                    <p>Click Update to manage lease dates.</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+
+            {isEditing && pendingLeaseDateChanges > 0 && (
+              <span className="rounded-full bg-amber-100 px-2 py-1 text-xs text-amber-700">
+                {pendingLeaseDateChanges} Pending Change
+                {pendingLeaseDateChanges > 1 ? "s" : ""}
+              </span>
+            )}
+          </div>
+        }
+      >
         <div className="flex justify-end mb-6">
-          <Button
-            disabled={!isEditing}
-            className="bg-blue-600 hover:bg-blue-700 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-            onClick={() => {
-              if (!isEditing) return;
+          {isEditing && (
+            <div className="flex justify-end mb-6">
+              <Button
+                className="bg-blue-600 hover:bg-blue-700 flex items-center gap-2"
+                onClick={() => {
+                  setLeaseDateForm({
+                    start_date: "",
+                    end_date: "",
+                    rent_psf: "",
+                  });
 
-              setLeaseDateForm({
-                start_date: "",
-                end_date: "",
-                rent_psf: "",
-              });
-
-              setShowAddLeaseDialog(true);
-            }}
-          >
-            <Plus className="w-4 h-4" />
-            Add Lease Dates
-          </Button>
+                  setShowAddLeaseDialog(true);
+                }}
+              >
+                <Plus className="w-4 h-4" />
+                Add Lease Dates
+              </Button>
+            </div>
+          )}
         </div>
+        <Table containerClassName="max-h-[350px] border rounded-lg">
+          <TableHeader>
+            <TableRow>
+              <TableHead className="w-16">#</TableHead>
 
-        <div className="rounded-lg border overflow-hidden">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-16">#</TableHead>
+              <TableHead>Start Date</TableHead>
 
-                <TableHead>Start Date</TableHead>
+              <TableHead>End Date</TableHead>
 
-                <TableHead>End Date</TableHead>
+              <TableHead>Rent PSF</TableHead>
 
-                <TableHead>Rent PSF</TableHead>
+              {isEditing && <TableHead>Status</TableHead>}
 
+              {isEditing && (
                 <TableHead className="text-center w-48">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
+              )}
+            </TableRow>
+          </TableHeader>
 
-            <TableBody>
-              {leaseSchedules.length === 0 ? (
-                <TableRow>
-                  <TableCell
-                    colSpan={5}
-                    className="text-center py-8 text-gray-500"
+          <TableBody>
+            {leaseSchedules.length === 0 ? (
+              <TableRow>
+                <TableCell
+                  colSpan={isEditing ? 6 : 4}
+                  className="text-center py-8 text-gray-500"
+                >
+                  No lease dates found.
+                </TableCell>
+              </TableRow>
+            ) : (
+              leaseSchedules.map((item, index) => {
+                const isAdded = leaseScheduleChanges.added.some(
+                  (x) => x.rent_schedule_id === item.rent_schedule_id,
+                );
+
+                const isUpdated = leaseScheduleChanges.updated.some(
+                  (x) => x.rent_schedule_id === item.rent_schedule_id,
+                );
+
+                return (
+                  <TableRow
+                    key={item.rent_schedule_id}
+                    className={
+                      isAdded ? "bg-green-50" : isUpdated ? "bg-yellow-50" : ""
+                    }
                   >
-                    No lease dates found.
-                  </TableCell>
-                </TableRow>
-              ) : (
-                leaseSchedules.map((item, index) => (
-                  <TableRow key={item.rent_schedule_id}>
                     <TableCell>{index + 1}</TableCell>
 
                     <TableCell>
                       {new Date(item.start_date).toLocaleDateString()}
                     </TableCell>
+
                     <TableCell>
                       {item.end_date
                         ? new Date(item.end_date).toLocaleDateString()
                         : "—"}
                     </TableCell>
+
                     <TableCell>
                       {item.rent_psf
                         ? `$${Number(item.rent_psf).toLocaleString(undefined, {
@@ -701,55 +895,73 @@ export default function LeaseViewPage({
                         : "—"}
                     </TableCell>
 
-                    <TableCell>
-                      <div className="flex justify-center gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={!isEditing}
-                          className="disabled:opacity-50 disabled:cursor-not-allowed"
-                          onClick={() => {
-                            if (!isEditing) return;
+                    {isEditing && (
+                      <TableCell>
+                        {isAdded ? (
+                          <span className="rounded bg-green-100 px-2 py-1 text-xs font-medium text-green-700">
+                            Added
+                          </span>
+                        ) : isUpdated ? (
+                          <span className="rounded bg-yellow-100 px-2 py-1 text-xs font-medium text-yellow-700">
+                            Modified
+                          </span>
+                        ) : (
+                          "—"
+                        )}
+                      </TableCell>
+                    )}
 
-                            setEditingLeaseDate(item);
+                    {isEditing && (
+                      <TableCell>
+                        <div className="flex justify-center gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={!isEditing}
+                            className="disabled:opacity-50 disabled:cursor-not-allowed"
+                            onClick={() => {
+                              if (!isEditing) return;
 
-                            setLeaseDateForm({
-                              start_date:
-                                item.start_date?.substring(0, 10) ?? "",
-                              end_date: item.end_date?.substring(0, 10) ?? "",
-                              rent_psf: item.rent_psf?.toString() ?? "",
-                            });
+                              setEditingLeaseDate(item);
 
-                            setShowEditLeaseDialog(true);
-                          }}
-                        >
-                          <Pencil className="w-4 h-4 mr-1" />
-                          Edit
-                        </Button>
+                              setLeaseDateForm({
+                                start_date:
+                                  item.start_date?.substring(0, 10) ?? "",
+                                end_date: item.end_date?.substring(0, 10) ?? "",
+                                rent_psf: item.rent_psf?.toString() ?? "",
+                              });
 
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          disabled={!isEditing}
-                          className="disabled:opacity-50 disabled:cursor-not-allowed"
-                          onClick={() => {
-                            if (!isEditing) return;
+                              setShowEditLeaseDialog(true);
+                            }}
+                          >
+                            <Pencil className="w-4 h-4 mr-1" />
+                            Edit
+                          </Button>
 
-                            setLeaseScheduleToDelete(item);
-                            setShowDeleteLeaseDialog(true);
-                          }}
-                        >
-                          <Trash2 className="w-4 h-4 mr-1" />
-                          Delete
-                        </Button>
-                      </div>
-                    </TableCell>
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            disabled={!isEditing}
+                            className="disabled:opacity-50 disabled:cursor-not-allowed"
+                            onClick={() => {
+                              if (!isEditing) return;
+
+                              setLeaseScheduleToDelete(item);
+                              setShowDeleteLeaseDialog(true);
+                            }}
+                          >
+                            <Trash2 className="w-4 h-4 mr-1" />
+                            Delete
+                          </Button>
+                        </div>
+                      </TableCell>
+                    )}
                   </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </div>
+                );
+              })
+            )}
+          </TableBody>
+        </Table>
       </InfoSection>
 
       {/* FINANCIAL */}
@@ -1031,10 +1243,9 @@ export default function LeaseViewPage({
               onClick={
                 editingLeaseDate ? handleUpdateLeaseDate : handleAddLeaseDate
               }
-              disabled={savingLeaseDate}
             >
               <Save className="w-4 h-4 mr-2" />
-              {savingLeaseDate ? "Saving..." : "Save"}
+              Save
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1092,13 +1303,9 @@ export default function LeaseViewPage({
               Cancel
             </Button>
 
-            <Button
-              variant="destructive"
-              onClick={handleDeleteLeaseDate}
-              disabled={deletingLeaseSchedule}
-            >
+            <Button variant="destructive" onClick={handleDeleteLeaseDate}>
               <Trash2 className="w-4 h-4 mr-2" />
-              {deletingLeaseSchedule ? "Deleting..." : "Delete"}
+              Delete
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1114,7 +1321,7 @@ function InfoSection({
   icon,
   children,
 }: {
-  title: string;
+  title: React.ReactNode;
   icon: React.ReactNode;
   children: React.ReactNode;
 }) {
@@ -1159,7 +1366,11 @@ function InfoItem({
           type={type}
           step={type === "number" ? "0.01" : undefined}
           inputMode={type === "number" ? "decimal" : undefined}
-          value={value ?? ""}
+          value={
+            typeof value === "number" && Number.isNaN(value)
+              ? ""
+              : (value ?? "")
+          }
           onChange={(e) => onChange?.(e.target.value)}
           className="w-full border rounded-md px-3 py-2 text-sm"
         />
@@ -1185,7 +1396,24 @@ function formatUSD(value: any) {
 function buildDirtyPayload(original: any, draft: any) {
   const payload: Record<string, any> = {};
 
+  const numericFields = [
+    "price",
+    "annual_rent",
+    "rent_psf",
+    "pass_tmru",
+    "noi",
+    "size",
+  ];
+
   Object.keys(draft).forEach((key) => {
+    if (numericFields.includes(key)) {
+      if (Number(original[key] ?? 0) !== Number(draft[key] ?? 0)) {
+        payload[key] = draft[key];
+      }
+
+      return;
+    }
+
     if (draft[key] !== original[key]) {
       payload[key] = draft[key];
     }
