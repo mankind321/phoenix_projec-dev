@@ -160,21 +160,21 @@ export async function GET(req: Request) {
       for (const keyword of keywords) {
         const { abbr, full } = normalizeStateValue(keyword);
 
+        // If this is a state abbreviation, search using the full state name
+        const searchValue = full ?? keyword;
+
         conditions.push(
-          `name.ilike.%${keyword}%`,
-          `address.ilike.%${keyword}%`,
-          `city.ilike.%${keyword}%`,
-          `state.ilike.%${keyword}%`,
-          `type.ilike.%${keyword}%`,
-          `status.ilike.%${keyword}%`,
-          `tenancytype.ilike.%${keyword}%`,
+          `name.ilike.%${searchValue}%`,
+          `address.ilike.%${searchValue}%`,
+          `city.ilike.%${searchValue}%`,
+          `state.ilike.%${searchValue}%`,
+          `type.ilike.%${searchValue}%`,
+          `status.ilike.%${searchValue}%`,
+          `tenancytype.ilike.%${searchValue}%`,
         );
 
-        if (full) {
-          conditions.push(`state.ilike.%${full}%`);
-        }
-
-        if (abbr && abbr !== keyword) {
+        // Also search the abbreviation in the state column only
+        if (abbr && abbr !== searchValue) {
           conditions.push(`state.ilike.%${abbr}%`);
         }
       }
@@ -204,8 +204,38 @@ export async function GET(req: Request) {
     console.log("📊 DB RESULT COUNT:", data?.length || 0);
     console.log("📊 TOTAL COUNT:", count);
 
+    // Rank search results by keyword relevance
+    let rankedData = data || [];
+
+    if (userInput.trim()) {
+      const keywords = userInput
+        .trim()
+        .split(/\s+/)
+        .map((k) => {
+          const { full } = normalizeStateValue(k);
+          return (full ?? k).toLowerCase();
+        });
+
+      rankedData = [...rankedData].sort((a: any, b: any) => {
+        const score = (item: any) => {
+          let s = 0;
+
+          for (const keyword of keywords) {
+            if (item.name?.toLowerCase().includes(keyword)) s += 100;
+            if (item.address?.toLowerCase().includes(keyword)) s += 60;
+            if (item.city?.toLowerCase().includes(keyword)) s += 40;
+            if (item.state?.toLowerCase().includes(keyword)) s += 20;
+          }
+
+          return s;
+        };
+
+        return score(b) - score(a);
+      });
+    }
+
     const signedData = await Promise.all(
-      (data || []).map(async (p: any) => ({
+      rankedData.map(async (p: any) => ({
         ...p,
         file_url: p.file_url ? await getSignedUrl(p.file_url) : null,
       })),

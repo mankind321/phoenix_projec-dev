@@ -6,6 +6,9 @@ import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
 import { toast } from "sonner";
 
 import {
@@ -20,15 +23,30 @@ import {
 import {
   ArrowLeft,
   Building2,
+  ClipboardList,
   DollarSign,
   Info,
   MapPinned,
   Users,
+  Download,
+  View,
+  Eye,
+  Pencil,
+  CircleX,
+  Save,
+  Loader2,
   CheckCircle,
   XCircle,
-  Loader2,
-  Download,
 } from "lucide-react";
+import { Can } from "@/app/components/can";
+
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 import {
   Dialog,
@@ -38,6 +56,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+
+import { Badge } from "@/components/ui/badge";
 
 interface PropertyData {
   property: any;
@@ -53,7 +73,7 @@ interface PropertyData {
     file_url: string;
     doc_type: string;
   };
-  contacts: any[];
+  contacts: any[]; // NEW
 }
 
 export default function PropertyViewPage({
@@ -66,12 +86,49 @@ export default function PropertyViewPage({
 
   const [data, setData] = useState<PropertyData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [processing, setProcessing] = useState(false);
 
   const [downloadingBrochure, setDownloadingBrochure] = useState(false);
 
+  const [form, setForm] = useState<any>({});
+
+  const [rentSchedule, setRentSchedule] = useState<any[]>([]);
+
   const [approveOpen, setApproveOpen] = useState(false);
   const [rejectOpen, setRejectOpen] = useState(false);
+  const [processing, setProcessing] = useState(false);
+
+  const [selectedSchedules, setSelectedSchedules] = useState<
+    Record<string, string>
+  >({});
+
+  const [leaseCounts, setLeaseCounts] = useState({
+    active: 0,
+    expired: 0,
+  });
+
+  useEffect(() => {
+    if (!propertyId) return;
+
+    const fetchLeaseCounts = async () => {
+      try {
+        const res = await fetch(
+          `/api/lease/count-status?property_id=${propertyId}`,
+        );
+        const json = await res.json();
+
+        if (json.success) {
+          setLeaseCounts({
+            active: json.data.active ?? 0,
+            expired: json.data.expired ?? 0,
+          });
+        }
+      } catch (err) {
+        console.error("Failed to load lease counts:", err);
+      }
+    };
+
+    fetchLeaseCounts();
+  }, [propertyId]);
 
   useEffect(() => {
     if (!propertyId) return;
@@ -81,8 +138,38 @@ export default function PropertyViewPage({
         const res = await fetch(`/api/properties/${propertyId}`);
         const json = await res.json();
 
-        if (json.success) setData(json.data);
-        else console.error(json.message);
+        if (json.success) {
+          setData(json.data);
+
+          /**  const defaults: Record<string, string> = {};
+
+          [
+            ...(json.data.leases.active ?? []),
+            ...(json.data.leases.expired ?? []),
+          ].forEach((lease: any) => {
+            defaults[lease.lease_id] = getDefaultScheduleId(lease);
+          });
+
+          setSelectedSchedules(defaults);
+          */
+          const p = json.data.property;
+
+          setForm({
+            name: p.name,
+            type: p.type,
+            landlord: p.landlord,
+            status: p.status,
+            address: p.address,
+            city: p.city,
+            state: p.state,
+            size: p.size, // ✅ ADD
+            price: p.price,
+            cap_rate: p.cap_rate,
+            sale_date: p.sale_date,
+            comments: p.comments,
+            tenancytype: p.tenancytype,
+          });
+        } else console.error(json.message);
       } catch (error) {
         console.error("Error loading property:", error);
       } finally {
@@ -93,33 +180,203 @@ export default function PropertyViewPage({
     fetchProperty();
   }, [propertyId]);
 
+  useEffect(() => {
+    if (!propertyId) return;
+
+    const fetchRentSchedule = async () => {
+      try {
+        const res = await fetch(
+          `/api/properties/rent-schedule?property_id=${propertyId}`,
+        );
+        const json = await res.json();
+
+        if (json.success) {
+          setRentSchedule(json.items ?? []);
+        }
+      } catch (err) {
+        console.error("Failed to load rent schedule:", err);
+      }
+    };
+
+    fetchRentSchedule();
+  }, [propertyId]);
+
+  useEffect(() => {
+    if (!data) return;
+
+    const defaults: Record<string, string> = {};
+
+    [...data.leases.active, ...data.leases.expired].forEach((lease: any) => {
+      defaults[lease.lease_id] = getDefaultScheduleId(lease);
+    });
+
+    setSelectedSchedules(defaults);
+  }, [data]);
+
+  function handleChange(field: string, value: any) {
+    setForm((prev: any) => ({
+      ...prev,
+      [field]: value,
+    }));
+  }
+
   function normalizeGsUrl(url: string) {
     if (!url) return "";
 
     const bucket = process.env.NEXT_PUBLIC_GCP_BUCKET;
-    let path = decodeURIComponent(url).trim();
 
-    if (path.startsWith("gs://")) {
-      path = path.replace(`gs://${bucket}/`, "");
+    // gs://bucket/path
+    if (url.startsWith("gs://")) {
+      return url.replace(`gs://${bucket}/`, "");
     }
 
-    if (path.includes("storage.googleapis.com")) {
-      const parts = path.split(`/${bucket}/`);
-      path = parts.length > 1 ? parts[1] : "";
+    // https://storage.googleapis.com/bucket/path
+    if (url.includes("storage.googleapis.com")) {
+      const parts = url.split(`/${bucket}/`);
+      return parts.length > 1 ? parts[1] : "";
     }
 
-    if (path.startsWith(bucket + "/")) {
-      path = path.replace(bucket + "/", "");
-    }
-
-    path = path.replace(/^\/+/, "");
-
-    return path;
+    return url;
   }
 
   /* -------------------------------------------
-   DOWNLOAD BROCHURE FUNCTION
+   APPROVE FUNCTION
   --------------------------------------------*/
+  async function handleApprove() {
+    if (!propertyId) return;
+
+    setProcessing(true);
+
+    toast.promise(
+      (async () => {
+        // 1. Save any edits first
+        const updateRes = await fetch(`/api/properties/${propertyId}`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            name: form.name ?? null,
+            type: form.type ?? null,
+            landlord: form.landlord ?? null,
+            status: form.status ?? null,
+            address: form.address ?? null,
+            city: form.city ?? null,
+            state: form.state ?? null,
+            size: form.size ? Number(form.size) : null,
+            price: form.price ? Number(form.price) : null,
+            cap_rate: form.cap_rate ?? null,
+            sale_date: form.sale_date || null,
+            comments: form.comments ?? null,
+            tenancytype: form.tenancytype ?? null,
+          }),
+        });
+
+        const updateJson = await updateRes.json();
+
+        if (!updateRes.ok || !updateJson.success) {
+          throw new Error(updateJson.message || "Failed to update property");
+        }
+
+        // Keep UI in sync
+        setData((prev: any) => ({
+          ...prev,
+          property: updateJson.data ?? {
+            ...prev.property,
+            ...form,
+          },
+        }));
+
+        // 2. Approve the property
+        const approveRes = await fetch("/api/review/action", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            propertyId,
+            action: "approve",
+          }),
+        });
+
+        const approveJson = await approveRes.json();
+
+        if (!approveRes.ok) {
+          throw new Error(approveJson.error || "Failed to approve property");
+        }
+
+        return approveJson;
+      })(),
+      {
+        loading: "Saving changes and approving property...",
+
+        success: () => {
+          setApproveOpen(false);
+
+          window.dispatchEvent(new Event("review-count-updated"));
+
+          router.push("/dashboard/review");
+          router.refresh();
+
+          return "Property updated and approved successfully";
+        },
+
+        error: (err) =>
+          err instanceof Error ? err.message : "Failed to approve property",
+
+        finally: () => {
+          setProcessing(false);
+        },
+      },
+    );
+  }
+
+  /* -------------------------------------------
+   REJECT FUNCTION
+  --------------------------------------------*/
+  async function handleReject() {
+    if (!propertyId) return;
+
+    setProcessing(true);
+
+    toast.promise(
+      (async () => {
+        const res = await fetch(`/api/properties/${propertyId}`, {
+          method: "DELETE",
+        });
+
+        const json = await res.json();
+
+        if (!res.ok) {
+          throw new Error(json.message || "Failed to reject property");
+        }
+
+        return json;
+      })(),
+      {
+        loading: "Rejecting and deleting property...",
+
+        success: () => {
+          setRejectOpen(false);
+
+          window.dispatchEvent(new Event("review-count-updated"));
+
+          router.push("/dashboard/review");
+          router.refresh();
+
+          return "Property rejected and deleted successfully";
+        },
+
+        error: (err) =>
+          err instanceof Error ? err.message : "Failed to reject property",
+
+        finally: () => {
+          setProcessing(false);
+        },
+      },
+    );
+  }
+
   async function handleDownloadBrochure() {
     const fileUrl = data?.documentFiles?.file_url;
 
@@ -137,6 +394,7 @@ export default function PropertyViewPage({
       if (fileUrl.startsWith("https://storage.googleapis.com")) {
         downloadUrl = fileUrl;
       } else {
+        // CASE 2: gs:// or relative path
         const clean = normalizeGsUrl(fileUrl);
 
         if (!clean) {
@@ -155,6 +413,7 @@ export default function PropertyViewPage({
         return;
       }
 
+      // Only open if exists
       window.open(downloadUrl, "_blank");
       toast.success("Download started.");
     } catch (error) {
@@ -163,99 +422,6 @@ export default function PropertyViewPage({
     } finally {
       setDownloadingBrochure(false);
     }
-  }
-
-  /* -------------------------------------------
-     APPROVE FUNCTION
-  --------------------------------------------*/
-  async function handleApprove() {
-    if (!propertyId) return;
-
-    setProcessing(true);
-
-    toast.promise(
-      (async () => {
-        const res = await fetch("/api/review/action", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            propertyId,
-            action: "approve",
-          }),
-        });
-
-        const json = await res.json();
-
-        if (!res.ok)
-          throw new Error(json.error || "Failed to approve property");
-
-        return json;
-      })(),
-      {
-        loading: "Approving property...",
-
-        success: () => {
-          // ✅ notify sidebar to refresh Review badge
-          window.dispatchEvent(new Event("review-count-updated"));
-
-          router.push("/dashboard/review");
-          router.refresh();
-
-          return "Property approved successfully";
-        },
-
-        error: "Failed to approve property",
-
-        finally: () => {
-          setProcessing(false);
-        },
-      },
-    );
-  }
-
-  /* -------------------------------------------
-     REJECT FUNCTION
-  --------------------------------------------*/
-  async function handleReject() {
-    if (!propertyId) return;
-
-    setProcessing(true);
-
-    toast.promise(
-      (async () => {
-        const res = await fetch(`/api/properties/${propertyId}`, {
-          method: "DELETE",
-        });
-
-        const json = await res.json();
-
-        if (!res.ok)
-          throw new Error(json.message || "Failed to delete property");
-
-        return json;
-      })(),
-      {
-        loading: "Rejecting and deleting property...",
-
-        success: () => {
-          // ✅ notify sidebar to refresh Review badge
-          window.dispatchEvent(new Event("review-count-updated"));
-
-          router.push("/dashboard/review");
-          router.refresh();
-
-          return "Property rejected and deleted successfully";
-        },
-
-        error: "Failed to reject property",
-
-        finally: () => {
-          setProcessing(false);
-        },
-      },
-    );
   }
 
   if (loading)
@@ -271,8 +437,29 @@ export default function PropertyViewPage({
     );
 
   const property = data.property;
+  const leases = data.leases;
   const documentFiles = data.documentFiles;
   const contacts = data.contacts;
+
+  const mapsQuery =
+    property.latitude && property.longitude
+      ? `${property.latitude},${property.longitude}`
+      : encodeURIComponent(
+          `${property.address}, ${property.city}, ${property.state}`,
+        );
+
+  const getSelectedSchedule = (lease: any) => {
+    if (!lease.rent_schedules?.length) return null;
+
+    const selectedId =
+      selectedSchedules[lease.lease_id] ?? getDefaultScheduleId(lease);
+
+    return (
+      lease.rent_schedules.find(
+        (x: any) => x.rent_schedule_id === selectedId,
+      ) ?? null
+    );
+  };
 
   return (
     <div className="w-11/12 mx-auto mt-10 space-y-10">
@@ -287,11 +474,53 @@ export default function PropertyViewPage({
       {/* BASIC INFO */}
       <InfoSection icon={<Info />} title="Basic Information">
         <Grid2>
-          <InfoItem label="Name" value={property.name} />
-          <InfoItem label="Type" value={property.type} />
-          <InfoItem label="Landlord" value={property.landlord} />
-          <InfoItem label="Status" value={property.status} />
-          <InfoItem label="Tenancy Type" value={formatTenancyType(property.tenancytype)} />
+          <InfoItem
+            label="Name"
+            value={form.name}
+            editable={true}
+            onChange={(v) => handleChange("name", v)}
+          />
+
+          <InfoItem
+            label="Type"
+            value={form.type}
+            editable={true}
+            onChange={(v) => handleChange("type", v)}
+          />
+
+          <InfoItem
+            label="Landlord"
+            value={form.landlord}
+            editable={true}
+            onChange={(v) => handleChange("landlord", v)}
+          />
+
+          <InfoItem
+            label="Status"
+            value={form.status}
+            editable={true}
+            onChange={(v) => handleChange("status", v)}
+          />
+
+          <InfoItem
+            label="Tenancy Type"
+            value={form.tenancytype}
+            editable={true}
+            type="select"
+            options={[
+              { label: "Single Tenant", value: "SingleTenant" },
+              { label: "Multi Tenant", value: "MultiTenant" },
+            ]}
+            onChange={(v) => handleChange("tenancytype", v)}
+          />
+
+          <InfoItem
+            label="Property Size (Square Feet/SF)"
+            value={form.size}
+            editable={true}
+            onChange={(v) => handleChange("size", v)}
+          />
+
           <div>
             <Label className="text-gray-700 font-medium">File</Label>
             {data?.documentFiles?.file_url ? (
@@ -300,12 +529,7 @@ export default function PropertyViewPage({
                 disabled={!data?.documentFiles?.file_url || downloadingBrochure}
                 className="bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-2 text-lg disabled:bg-gray-400 mt-2"
               >
-                {downloadingBrochure ? (
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                ) : (
-                  <Download className="w-5 h-5" />
-                )}
-
+                <Download className="w-5 h-5" />
                 {downloadingBrochure
                   ? "Checking..."
                   : "Download Property Brochure"}
@@ -320,17 +544,35 @@ export default function PropertyViewPage({
       {/* LOCATION */}
       <InfoSection icon={<Building2 />} title="Property Location">
         <Grid2>
-          <InfoItem label="Address" value={property.address} />
-          <InfoItem label="City" value={property.city} />
-          <InfoItem label="State" value={property.state} />
+          <InfoItem
+            label="Address"
+            value={form.address}
+            editable={true}
+            onChange={(v) => handleChange("address", v)}
+          />
+
+          <InfoItem
+            label="City"
+            value={form.city}
+            editable={true}
+            onChange={(v) => handleChange("city", v)}
+          />
+
+          <InfoItem
+            label="State"
+            value={form.state}
+            editable={true}
+            onChange={(v) => handleChange("state", v)}
+          />
 
           <div className="space-y-1">
             <Label className="text-gray-700 font-medium">Location</Label>
+
             <a
-              href={`https://www.google.com/maps?q=${property.latitude},${property.longitude}`}
+              href={`https://www.google.com/maps/search/?api=1&query=${mapsQuery}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700"
             >
               <MapPinned className="w-4 h-4" />
               Open in Google Maps
@@ -342,10 +584,408 @@ export default function PropertyViewPage({
       {/* FINANCIAL */}
       <InfoSection icon={<DollarSign />} title="Financial Details">
         <Grid2>
-          <InfoItem label="Sale Price" value={formatUSD(property.price)} />
-          <InfoItem label="Cap Rate" value={property.cap_rate} />
-          <InfoItem label="Sale Date" value={property.sale_date} />
+          <InfoItem
+            label="Sale Price"
+            value={form.price}
+            editable={true}
+            onChange={(v) => handleChange("price", v)}
+          />
+
+          <InfoItem
+            label="Cap Rate"
+            value={form.cap_rate}
+            editable={true}
+            onChange={(v) =>
+              handleChange("cap_rate", v.replace(/[^0-9./%]/g, ""))
+            }
+          />
+
+          <InfoItem
+            label="Sale Date"
+            value={form.sale_date}
+            editable={true}
+            onChange={(v) => handleChange("sale_date", v)}
+          />
         </Grid2>
+      </InfoSection>
+
+      {/* LEASES */}
+      <InfoSection icon={<Users />} title="Tenant">
+        <Tabs defaultValue="active" className="w-full">
+          <TabsList className="mb-4">
+            <TabsTrigger value="active" className="flex items-center">
+              Leases
+              {leaseCounts.active > 0 && (
+                <BadgeCount value={leaseCounts.active} />
+              )}
+            </TabsTrigger>
+
+            <TabsTrigger value="expired" className="flex items-center">
+              Expired Leases
+              {leaseCounts.expired > 0 && (
+                <BadgeCount value={leaseCounts.expired} variant="red" />
+              )}
+            </TabsTrigger>
+          </TabsList>
+
+          {/* ACTIVE */}
+          <TabsContent value="active">
+            {leases.active.length === 0 ? (
+              <p className="text-gray-500">No active leases.</p>
+            ) : (
+              <Table containerClassName="max-h-[400px] border rounded-md">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Tenant</TableHead>
+                    <TableHead>Unit</TableHead>
+                    <TableHead className="text-center">
+                      Square Feet/SF
+                    </TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="w-[260px]">Lease Period</TableHead>
+                    <TableHead>PSF</TableHead>
+                    <TableHead>Monthly Rent</TableHead>
+                    <TableHead>Annual Rent</TableHead>
+                    <TableHead className="text-center">Action</TableHead>
+                  </TableRow>
+                </TableHeader>
+
+                <TableBody>
+                  {leases.active.map((lease) => (
+                    <TableRow key={lease.lease_id}>
+                      <TableCell>{display(lease.tenant)}</TableCell>
+
+                      <TableCell>{display(lease.suite_unit)}</TableCell>
+                      <TableCell className="text-right pr-10">
+                        {(() => {
+                          const size = getLeaseSize(lease);
+
+                          return size !== null ? String(size) : "-";
+                        })()}
+                      </TableCell>
+
+                      <TableCell>
+                        <Badge
+                          className={
+                            lease.status === "Occupied"
+                              ? "bg-green-100 text-green-700 hover:bg-green-100"
+                              : lease.status === "Available"
+                                ? "bg-blue-100 text-blue-700 hover:bg-blue-100"
+                                : "bg-red-100 text-red-700 hover:bg-red-100"
+                          }
+                        >
+                          {lease.status}
+                        </Badge>
+                      </TableCell>
+
+                      <TableCell>
+                        <Select
+                          value={selectedSchedules[lease.lease_id]}
+                          onValueChange={(value) => {
+                            setSelectedSchedules((prev) => ({
+                              ...prev,
+
+                              [lease.lease_id]: value,
+                            }));
+                          }}
+                        >
+                          <SelectTrigger className="w-[240px]">
+                            <SelectValue />
+                          </SelectTrigger>
+
+                          <SelectContent>
+                            {lease.rent_schedules?.map((schedule: any) => (
+                              <SelectItem
+                                key={schedule.rent_schedule_id}
+                                value={schedule.rent_schedule_id}
+                              >
+                                {new Date(
+                                  schedule.start_date,
+                                ).toLocaleDateString()}
+
+                                {" - "}
+
+                                {schedule.end_date
+                                  ? new Date(
+                                      schedule.end_date,
+                                    ).toLocaleDateString()
+                                  : "Open Ended"}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </TableCell>
+
+                      <TableCell>
+                        {(() => {
+                          const schedule = getSelectedSchedule(lease);
+
+                          const psf =
+                            schedule?.rent_psf ?? getLeaseRentPsf(lease);
+
+                          return psf != null
+                            ? `$${psf.toLocaleString(undefined, {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}`
+                            : "-";
+                        })()}
+                      </TableCell>
+
+                      <TableCell>
+                        {(() => {
+                          const schedule = getSelectedSchedule(lease);
+
+                          const size = getLeaseSize(lease);
+
+                          const monthlyRent =
+                            schedule && size
+                              ? (schedule.rent_psf * size) / 12
+                              : getLeaseMonthlyRent(lease);
+
+                          return monthlyRent ? formatUSD(monthlyRent) : "-";
+                        })()}
+                      </TableCell>
+
+                      <TableCell>
+                        {(() => {
+                          const schedule = getSelectedSchedule(lease);
+
+                          const size = getLeaseSize(lease);
+
+                          const annualRent =
+                            schedule && size
+                              ? schedule.rent_psf * size
+                              : getLeaseAnnualRent(lease);
+
+                          return annualRent ? formatUSD(annualRent) : "-";
+                        })()}
+                      </TableCell>
+
+                      <TableCell className="text-center">
+                        <Button
+                          size="sm"
+                          onClick={() =>
+                            router.push(`/dashboard/leases/${lease.lease_id}`)
+                          }
+                          className="bg-blue-600 hover:bg-blue-700 text-white"
+                        >
+                          <Eye size={16} className="mr-1" />
+                          View
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </TabsContent>
+
+          {/* EXPIRED */}
+          <TabsContent value="expired">
+            {leases.expired.length === 0 ? (
+              <p className="text-gray-500">No expired leases.</p>
+            ) : (
+              <Table containerClassName="max-h-[400px] border rounded-md">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Tenant</TableHead>
+                    <TableHead>Unit</TableHead>
+                    <TableHead>Size/SF</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Start Date</TableHead>
+                    <TableHead>End Date</TableHead>
+                    <TableHead className="text-right">PSF</TableHead>
+                    <TableHead className="text-right">Monthly Rent</TableHead>
+                    <TableHead className="text-right">Annual Rent</TableHead>
+                    <TableHead className="text-center">Action</TableHead>
+                  </TableRow>
+                </TableHeader>
+
+                <TableBody>
+                  {leases.expired.map((lease) => (
+                    <TableRow key={lease.lease_id}>
+                      <TableCell>{display(lease.tenant)}</TableCell>
+
+                      <TableCell>{display(lease.suite_unit)}</TableCell>
+
+                      <TableCell>
+                        {(() => {
+                          const size = getLeaseSize(lease);
+
+                          return size !== null ? String(size) : "-";
+                        })()}
+                      </TableCell>
+
+                      <TableCell>{display(lease.status)}</TableCell>
+
+                      <TableCell>{display(lease.lease_start)}</TableCell>
+
+                      <TableCell>{display(lease.lease_end)}</TableCell>
+
+                      <TableCell>
+                        {(() => {
+                          const psf = getLeaseRentPsf(lease);
+
+                          return psf != null
+                            ? `$${psf.toLocaleString(undefined, {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}`
+                            : "-";
+                        })()}
+                      </TableCell>
+
+                      <TableCell>
+                        {(() => {
+                          const monthlyRent = getLeaseMonthlyRent(lease);
+
+                          return monthlyRent ? formatUSD(monthlyRent) : "-";
+                        })()}
+                      </TableCell>
+
+                      <TableCell>
+                        {(() => {
+                          const annualRent = getLeaseAnnualRent(lease);
+
+                          return annualRent ? formatUSD(annualRent) : "-";
+                        })()}
+                      </TableCell>
+
+                      <TableCell className="text-center">
+                        <Button
+                          size="sm"
+                          onClick={() =>
+                            router.push(`/dashboard/leases/${lease.lease_id}`)
+                          }
+                          className="bg-blue-600 hover:bg-blue-700 text-white"
+                        >
+                          <Eye size={16} className="mr-1" />
+                          View
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </TabsContent>
+        </Tabs>
+      </InfoSection>
+
+      {/* RENT SCHEDULE */}
+      <InfoSection icon={<DollarSign />} title="Rent Schedule">
+        {rentSchedule.length === 0 ? (
+          <p className="text-gray-500">No rent schedule available.</p>
+        ) : (
+          (() => {
+            // ✅ Column visibility (include RAW fallback fields)
+            const columnVisibility = {
+              startDate: rentSchedule.some(
+                (r) => r.startDate || r.startDateRaw,
+              ),
+              endDate: rentSchedule.some((r) => r.endDate || r.endDateRaw),
+              monthlyRent: hasAnyValue(rentSchedule, "monthlyRent"),
+              annualRent: hasAnyValue(rentSchedule, "annualRent"),
+              psf: hasAnyValue(rentSchedule, "psf"),
+              capRate: hasAnyValue(rentSchedule, "capRate"),
+              rentIncreasePercent: hasAnyValue(
+                rentSchedule,
+                "rentIncreasePercent",
+              ),
+            };
+
+            return (
+              <Table containerClassName="max-h-[400px] border rounded-md">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Term</TableHead>
+
+                    {columnVisibility.startDate && (
+                      <TableHead>Start Date</TableHead>
+                    )}
+
+                    {columnVisibility.endDate && (
+                      <TableHead>End Date</TableHead>
+                    )}
+
+                    {columnVisibility.monthlyRent && (
+                      <TableHead>Monthly Rent</TableHead>
+                    )}
+
+                    {columnVisibility.annualRent && (
+                      <TableHead>Annual Rent</TableHead>
+                    )}
+
+                    {columnVisibility.rentIncreasePercent && (
+                      <TableHead>Rent Increase %</TableHead>
+                    )}
+
+                    {columnVisibility.psf && <TableHead>PSF</TableHead>}
+
+                    {columnVisibility.capRate && (
+                      <TableHead>Cap Rate</TableHead>
+                    )}
+                  </TableRow>
+                </TableHeader>
+
+                <TableBody>
+                  {rentSchedule.map((r) => {
+                    const startDateValue = r.startDate ?? r.startDateRaw ?? "-";
+
+                    const endDateValue = r.endDate ?? r.endDateRaw ?? "-";
+
+                    return (
+                      <TableRow key={r.id}>
+                        <TableCell>{r.term || "-"}</TableCell>
+
+                        {columnVisibility.startDate && (
+                          <TableCell>{startDateValue}</TableCell>
+                        )}
+
+                        {columnVisibility.endDate && (
+                          <TableCell>{endDateValue}</TableCell>
+                        )}
+
+                        {columnVisibility.monthlyRent && (
+                          <TableCell>
+                            {r.monthlyRent ? formatUSD(r.monthlyRent) : "-"}
+                          </TableCell>
+                        )}
+
+                        {columnVisibility.annualRent && (
+                          <TableCell>
+                            {r.annualRent ? formatUSD(r.annualRent) : "-"}
+                          </TableCell>
+                        )}
+
+                        {columnVisibility.rentIncreasePercent && (
+                          <TableCell>
+                            {r.rentIncreasePercent
+                              ? `${r.rentIncreasePercent}%`
+                              : "-"}
+                          </TableCell>
+                        )}
+
+                        {columnVisibility.psf && (
+                          <TableCell>
+                            {r.psf ? `$${Number(r.psf).toFixed(2)}` : "-"}
+                          </TableCell>
+                        )}
+
+                        {columnVisibility.capRate && (
+                          <TableCell>
+                            {r.capRate ? `${r.capRate}%` : "-"}
+                          </TableCell>
+                        )}
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            );
+          })()
+        )}
       </InfoSection>
 
       {/* CONTACTS */}
@@ -358,11 +998,11 @@ export default function PropertyViewPage({
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead>Relationship</TableHead>
+                <TableHead>Listing Company</TableHead>
                 <TableHead>Broker</TableHead>
                 <TableHead>Phone</TableHead>
                 <TableHead>Email</TableHead>
-                <TableHead>Relationship</TableHead>
-                <TableHead>Listing Company</TableHead>
                 <TableHead>Website</TableHead>
                 <TableHead>Comments</TableHead>
               </TableRow>
@@ -371,13 +1011,31 @@ export default function PropertyViewPage({
             <TableBody>
               {contacts.map((c: any) => (
                 <TableRow key={c.contact_assignment_id}>
-                  <TableCell>{normalizeValue(c.broker_name)}</TableCell>
-                  <TableCell>{normalizeValue(c.phone)}</TableCell>
-                  <TableCell>{normalizeValue(c.email)}</TableCell>
-                  <TableCell>{normalizeValue(c.relationship)}</TableCell>
-                  <TableCell>{normalizeValue(c.listing_company)}</TableCell>
-                  <TableCell>{normalizeValue(c.website)}</TableCell>
-                  <TableCell>{normalizeValue(c.comments)}</TableCell>
+                  <TableCell>
+                    {display(normalizeBrokerText(c.relationship).join(", "))}
+                  </TableCell>
+
+                  <TableCell>{display(c.listing_company)}</TableCell>
+
+                  <TableCell>
+                    {display(normalizeBrokerText(c.broker_name).join(", "))}
+                  </TableCell>
+
+                  <TableCell>
+                    {display(normalizeBrokerText(c.phone).join(", "))}
+                  </TableCell>
+
+                  <TableCell>
+                    {display(
+                      normalizeBrokerText(c.email)
+                        .map((e) => e.replace(/-/g, ".")) // ✅ restore dots
+                        .join(", "),
+                    )}
+                  </TableCell>
+
+                  <TableCell>{display(c.website)}</TableCell>
+
+                  <TableCell>{display(c.comments)}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -385,7 +1043,34 @@ export default function PropertyViewPage({
         )}
       </InfoSection>
 
-      {/* BACK BUTTON */}
+      {/* COMMENTS */}
+      <InfoSection icon={<ClipboardList />} title="Comments">
+        <textarea
+          className="w-full border rounded-md px-3 py-2 text-sm"
+          value={form.comments || ""}
+          onChange={(e) => handleChange("comments", e.target.value)}
+        />
+      </InfoSection>
+
+      {/* AUDIT INFORMATION */}
+      <InfoSection icon={<Info />} title="Audit Information">
+        <Grid2>
+          <InfoItem
+            label="Uploaded By"
+            value={property.created_by_name || "—"}
+          />
+
+          <InfoItem
+            label="Uploaded At"
+            value={
+              property.created_at
+                ? new Date(property.created_at).toLocaleString()
+                : "—"
+            }
+          />
+        </Grid2>
+      </InfoSection>
+
       {/* ACTION BUTTONS ROW */}
       <div className="flex items-center justify-between pt-4 border-t">
         {/* LEFT SIDE → Back */}
@@ -393,6 +1078,7 @@ export default function PropertyViewPage({
           variant="outline"
           className="flex items-center gap-2"
           onClick={() => router.back()}
+          disabled={processing}
         >
           <ArrowLeft className="w-4 h-4" />
           Back
@@ -402,7 +1088,7 @@ export default function PropertyViewPage({
         <div className="flex gap-3">
           <Button
             disabled={processing}
-            onClick={() => setApproveOpen(true)}
+            onClick={handleApprove}
             className="bg-green-600 hover:bg-green-700 text-white flex items-center gap-2"
           >
             {processing ? (
@@ -410,12 +1096,12 @@ export default function PropertyViewPage({
             ) : (
               <CheckCircle className="w-4 h-4" />
             )}
-            Approve
+            {processing ? "Approving..." : "Approve"}
           </Button>
 
           <Button
             disabled={processing}
-            onClick={() => setRejectOpen(true)}
+            onClick={handleReject}
             className="bg-red-600 hover:bg-red-700 text-white flex items-center gap-2"
           >
             {processing ? (
@@ -423,17 +1109,23 @@ export default function PropertyViewPage({
             ) : (
               <XCircle className="w-4 h-4" />
             )}
-            Reject
+            {processing ? "Rejecting..." : "Reject"}
           </Button>
         </div>
       </div>
 
-      <Dialog open={approveOpen} onOpenChange={setApproveOpen}>
+      <Dialog
+        open={approveOpen}
+        onOpenChange={(open) => {
+          if (!processing) setApproveOpen(open);
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Approve Property?</DialogTitle>
             <DialogDescription>
-              Are you sure you want to approve this property?
+              Any changes you&apos;ve made will be saved before the property is
+              approved.
             </DialogDescription>
           </DialogHeader>
 
@@ -452,7 +1144,10 @@ export default function PropertyViewPage({
               onClick={handleApprove}
             >
               {processing ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Saving & Approving...
+                </>
               ) : (
                 "Confirm Approve"
               )}
@@ -461,7 +1156,12 @@ export default function PropertyViewPage({
         </DialogContent>
       </Dialog>
 
-      <Dialog open={rejectOpen} onOpenChange={setRejectOpen}>
+      <Dialog
+        open={rejectOpen}
+        onOpenChange={(open) => {
+          if (!processing) setRejectOpen(open);
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Reject Property?</DialogTitle>
@@ -486,7 +1186,10 @@ export default function PropertyViewPage({
               onClick={handleReject}
             >
               {processing ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Rejecting...
+                </>
               ) : (
                 "Confirm Reject"
               )}
@@ -529,13 +1232,51 @@ function Grid2({ children }: { children: React.ReactNode }) {
   );
 }
 
-function InfoItem({ label, value }: { label: string; value: any }) {
+function InfoItem({
+  label,
+  value,
+  editable = false,
+  onChange,
+  type = "text",
+  options = [],
+}: {
+  label: string;
+  value: any;
+  editable?: boolean;
+  onChange?: (val: string) => void;
+  type?: "text" | "select";
+  options?: { label: string; value: string }[];
+}) {
   return (
     <div className="space-y-1">
       <Label className="text-gray-700 font-medium">{label}</Label>
-      <p className="border rounded-md bg-gray-50 px-3 py-2 text-gray-800 text-sm">
-        {value || "—"}
-      </p>
+
+      {editable ? (
+        type === "select" ? (
+          <select
+            className="border rounded-md px-3 py-2 text-sm w-full"
+            value={value || ""}
+            onChange={(e) => onChange?.(e.target.value)}
+          >
+            <option value="">Select...</option>
+            {options.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <input
+            className="border rounded-md px-3 py-2 text-sm w-full"
+            value={value || ""}
+            onChange={(e) => onChange?.(e.target.value)}
+          />
+        )
+      ) : (
+        <p className="border rounded-md bg-gray-50 px-3 py-2 text-gray-800 text-sm">
+          {formatDisplayValue(value)}
+        </p>
+      )}
     </div>
   );
 }
@@ -547,24 +1288,75 @@ function formatUSD(value: any) {
   return num.toLocaleString("en-US", {
     style: "currency",
     currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   });
 }
 
-function normalizeValue(value: any): string {
-  if (!value) return "—";
+function display(value?: string) {
+  return value ? value : <span className="text-xl">———</span>;
+}
 
-  let str = String(value);
+function BadgeCount({
+  value,
+  variant = "blue",
+}: {
+  value: number;
+  variant?: "blue" | "red";
+}) {
+  if (!value) return null;
 
-  // Remove brackets and double quotes
-  str = str.replace(/[\[\]"]/g, "");
+  const styles =
+    variant === "red" ? "bg-red-700 text-white" : "bg-blue-700 text-white";
 
-  // Remove apostrophes ONLY if not between two characters
-  str = str.replace(/(^'|'$|(?<=\s)'|'(?=\s))/g, "");
+  return (
+    <span
+      className={`ml-2 inline-flex items-center justify-center px-2 py-0.5 text-xs font-semibold rounded-full ${styles}`}
+    >
+      {value}
+    </span>
+  );
+}
 
-  // Trim extra spaces
-  str = str.trim();
+export function normalizeBrokerText(
+  input: string | null | undefined,
+): string[] {
+  if (!input) return [];
 
-  return str || "—";
+  let cleaned = String(input).trim();
+
+  if (!cleaned) return [];
+
+  // PostgreSQL array
+  // {"John","Mary"}
+  if (cleaned.startsWith("{") && cleaned.endsWith("}")) {
+    cleaned = cleaned.slice(1, -1);
+  }
+
+  // Try JSON array first
+  // ["John","Mary"]
+  if (cleaned.startsWith("[") && cleaned.endsWith("]")) {
+    try {
+      const parsed = JSON.parse(cleaned);
+
+      if (Array.isArray(parsed)) {
+        return parsed.map((x) => String(x).trim()).filter(Boolean);
+      }
+    } catch {
+      // continue to fallback
+    }
+
+    cleaned = cleaned.slice(1, -1);
+  }
+
+  // Remove surrounding quotes if entire value is quoted
+  cleaned = cleaned.replace(/^["']|["']$/g, "");
+
+  // Split comma-separated values
+  return cleaned
+    .split(",")
+    .map((item) => item.trim().replace(/^["']|["']$/g, ""))
+    .filter(Boolean);
 }
 
 function formatTenancyType(value?: string | null): string {
@@ -577,3 +1369,154 @@ function formatTenancyType(value?: string | null): string {
 
   return map[value] || value;
 }
+
+function hasAnyValue(data: any[], field: string) {
+  return data.some(
+    (row) =>
+      row[field] !== null && row[field] !== undefined && row[field] !== "",
+  );
+}
+
+function getLeaseSize(lease: any): number | null {
+  const size = Math.round(Number(lease.size));
+
+  if (size > 0) {
+    return size;
+  }
+
+  const rentPsf = Number(lease.rent_psf);
+
+  if (rentPsf <= 0) {
+    return null;
+  }
+
+  const annualRent = Number(lease.annual_rent);
+
+  if (annualRent > 0) {
+    return Math.round(annualRent / rentPsf);
+  }
+
+  const monthlyRent = Number(lease.monthly_rent);
+
+  if (monthlyRent > 0) {
+    return Math.round((monthlyRent * 12) / rentPsf);
+  }
+
+  return null;
+}
+
+function getLeaseRentPsf(lease: any): number | null {
+  const rentPsf = Number(lease.rent_psf);
+
+  if (rentPsf > 0) {
+    return rentPsf;
+  }
+
+  const size = getLeaseSize(lease);
+
+  if (!size || size <= 0) {
+    return null;
+  }
+
+  const annualRent = Number(lease.annual_rent);
+
+  if (annualRent > 0) {
+    return annualRent / size;
+  }
+
+  const monthlyRent = Number(lease.monthly_rent);
+
+  if (monthlyRent > 0) {
+    return (monthlyRent * 12) / size;
+  }
+
+  return null;
+}
+
+function getLeaseAnnualRent(lease: any): number | null {
+  const annualRent = Number(lease.annual_rent);
+
+  if (annualRent > 0) {
+    return annualRent;
+  }
+
+  const monthlyRent = Number(lease.monthly_rent);
+
+  if (monthlyRent > 0) {
+    return monthlyRent * 12;
+  }
+
+  const size = getLeaseSize(lease);
+  const rentPsf = getLeaseRentPsf(lease);
+
+  if (size && rentPsf) {
+    return size * rentPsf;
+  }
+
+  return null;
+}
+
+function getLeaseMonthlyRent(lease: any): number | null {
+  const monthlyRent = Number(lease.monthly_rent);
+
+  if (monthlyRent > 0) {
+    return monthlyRent;
+  }
+
+  const annualRent = getLeaseAnnualRent(lease);
+
+  if (annualRent) {
+    return annualRent / 12;
+  }
+
+  return null;
+}
+
+function formatDisplayValue(value: any): string {
+  if (value == null || value === "") return "—";
+
+  if (Array.isArray(value)) {
+    return [...new Set(value)].filter(Boolean).join(", ");
+  }
+
+  const text = String(value).trim();
+
+  // PostgreSQL array
+  if (
+    (text.startsWith("{") && text.endsWith("}")) ||
+    (text.startsWith("[") && text.endsWith("]"))
+  ) {
+    const values = normalizeBrokerText(text);
+
+    return [...new Set(values)].join(", ");
+  }
+
+  return text;
+}
+
+const getDefaultScheduleId = (lease: any): string => {
+  const schedules = lease.rent_schedules ?? [];
+
+  if (schedules.length === 0) return "";
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  // Find the schedule that contains today's date
+  const current = schedules.find((s: any) => {
+    const start = new Date(s.start_date);
+    start.setHours(0, 0, 0, 0);
+
+    const end = s.end_date ? new Date(s.end_date) : null;
+    end?.setHours(23, 59, 59, 999);
+
+    return today >= start && (!end || today <= end);
+  });
+
+  if (current) {
+    return current.rent_schedule_id;
+  }
+
+  // Otherwise use the last schedule
+  return schedules[schedules.length - 1].rent_schedule_id;
+};
