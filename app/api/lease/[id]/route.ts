@@ -125,7 +125,13 @@ function getLeaseMonthlyRent(data: any): number | null {
 }
 
 // ======================================================
-// GET — View Lease (UNCHANGED LOGIC)
+// GET — View Lease
+//
+// Normal:
+//   /api/lease/[id]
+//
+// Review:
+//   /api/lease/[id]?fromReview=true
 // ======================================================
 export async function GET(
   req: Request,
@@ -136,21 +142,40 @@ export async function GET(
 
     if (!leaseId) {
       return NextResponse.json(
-        { success: false, message: "Lease ID is required" },
+        {
+          success: false,
+          message: "Lease ID is required",
+        },
         { status: 400 },
       );
     }
 
+    // ----------------------------------------------
     // 1️⃣ Validate session
+    // ----------------------------------------------
     const session = await getServerSession(authOptions);
+
     if (!session?.user) {
       return NextResponse.json(
-        { success: false, message: "Unauthorized" },
+        {
+          success: false,
+          message: "Unauthorized",
+        },
         { status: 401 },
       );
     }
 
-    // 2️⃣ RLS headers
+    // ----------------------------------------------
+    // 2️⃣ Determine whether this is Review mode
+    // ----------------------------------------------
+    const { searchParams } = new URL(req.url);
+
+    const fromReview =
+      searchParams.get("fromReview")?.toLowerCase() === "true";
+
+    // ----------------------------------------------
+    // 3️⃣ RLS headers
+    // ----------------------------------------------
     const rlsHeaders = {
       "x-app-role": session.user.role,
       "x-user-id": session.user.id,
@@ -159,47 +184,88 @@ export async function GET(
 
     const supabase = createRlsClient(rlsHeaders);
 
-    // 3️⃣ Lease data (VIEW)
+    // ----------------------------------------------
+    // 4️⃣ Select the appropriate view
+    // ----------------------------------------------
+    const leaseView = fromReview
+      ? "view_lease_property_with_user_review"
+      : "view_lease_property_with_user";
+
+    console.log(
+      `[GET /api/lease/${leaseId}] fromReview=${fromReview}, view=${leaseView}`,
+    );
+
+    // ----------------------------------------------
+    // 5️⃣ Get lease
+    // ----------------------------------------------
     const { data: lease, error: leaseError } = await supabase
-      .from("view_lease_property_with_user")
+      .from(leaseView)
       .select("*")
       .eq("lease_id", leaseId)
       .single();
 
-    if (leaseError) throw leaseError;
+    if (leaseError) {
+      if (leaseError.code === "PGRST116") {
+        return NextResponse.json(
+          {
+            success: false,
+            message: "Lease tenant not found.",
+          },
+          { status: 404 },
+        );
+      }
 
-    // 4️⃣ Contacts
+      throw leaseError;
+    }
+
+    // ----------------------------------------------
+    // 6️⃣ Get contacts
+    // ----------------------------------------------
     const { data: contacts, error: contactError } = await supabase
       .from("contact_with_assignment")
       .select("*")
       .eq("lease_id", leaseId)
       .order("created_at", { ascending: false });
 
-    if (contactError) throw contactError;
+    if (contactError) {
+      throw contactError;
+    }
 
-    // 5️⃣ Audit
+    // ----------------------------------------------
+    // 7️⃣ Audit
+    // ----------------------------------------------
     await logAuditTrail({
       userId: session.user.id,
       username: session.user.username,
       role: session.user.role,
       actionType: "READ",
       tableName: "lease",
-      description: `Viewed lease for tenant: ${lease.tenant}`,
+      description: `Viewed lease for tenant: ${
+        lease.tenant || "Unnamed Tenant"
+      }${fromReview ? " from Review" : ""}`,
       ipAddress: req.headers.get("x-forwarded-for") ?? "N/A",
       userAgent: req.headers.get("user-agent") ?? "Unknown",
     });
 
+    // ----------------------------------------------
+    // 8️⃣ Response
+    // ----------------------------------------------
     return NextResponse.json({
       success: true,
+      fromReview,
       data: {
         lease,
         contacts,
       },
     });
   } catch (err: any) {
-    console.error("GET /lease/[id] Error:", err);
+    console.error("GET /api/lease/[id] Error:", err);
+
     return NextResponse.json(
-      { success: false, message: err.message || "Server error" },
+      {
+        success: false,
+        message: err.message || "Server error",
+      },
       { status: 500 },
     );
   }
@@ -360,6 +426,141 @@ export async function PUT(
     console.error("PUT /lease/[id] Error:", err);
     return NextResponse.json(
       { success: false, message: err.message || "Server error" },
+      { status: 500 },
+    );
+  }
+}
+
+// ======================================================
+// DELETE — Delete Lease
+// Used by:
+//   1. Property Review → Delete Tenant
+//   2. Lease Review → Cancel Tenant
+// ======================================================
+export async function DELETE(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  try {
+    const { id: leaseId } = await params;
+
+    // ----------------------------------------------
+    // 1️⃣ Validate Lease ID
+    // ----------------------------------------------
+    if (!leaseId) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Lease ID is required",
+        },
+        { status: 400 },
+      );
+    }
+
+    // ----------------------------------------------
+    // 2️⃣ Validate session
+    // ----------------------------------------------
+    const session = await getServerSession(authOptions);
+
+    if (!session?.user) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Unauthorized",
+        },
+        { status: 401 },
+      );
+    }
+
+    // ----------------------------------------------
+    // 3️⃣ RLS headers
+    // ----------------------------------------------
+    const rlsHeaders = {
+      "x-app-role": session.user.role,
+      "x-user-id": session.user.id,
+      "x-account-id": session.user.accountId ?? "",
+    };
+
+    const supabase = createRlsClient(rlsHeaders);
+
+    // ----------------------------------------------
+    // 4️⃣ Get existing lease
+    // ----------------------------------------------
+    const { data: existingLease, error: existingLeaseError } = await supabase
+      .from("lease")
+      .select("lease_id, tenant, property_id")
+      .eq("lease_id", leaseId)
+      .single();
+
+    if (existingLeaseError) {
+      if (existingLeaseError.code === "PGRST116") {
+        return NextResponse.json(
+          {
+            success: false,
+            message: "Lease not found.",
+          },
+          { status: 404 },
+        );
+      }
+
+      throw existingLeaseError;
+    }
+
+    // ----------------------------------------------
+    // 5️⃣ Delete lease
+    // ----------------------------------------------
+    const { error: deleteError } = await supabase
+      .from("lease")
+      .delete()
+      .eq("lease_id", leaseId);
+
+    if (deleteError) {
+      console.error("DELETE lease error:", deleteError);
+
+      return NextResponse.json(
+        {
+          success: false,
+          message: deleteError.message,
+        },
+        { status: 500 },
+      );
+    }
+
+    // ----------------------------------------------
+    // 6️⃣ Audit
+    // ----------------------------------------------
+    await logAuditTrail({
+      userId: session.user.id,
+      username: session.user.username,
+      role: session.user.role,
+      actionType: "DELETE",
+      tableName: "lease",
+      description: `Deleted lease ${leaseId} for tenant: ${
+        existingLease.tenant || "Unnamed Tenant"
+      }`,
+      ipAddress: req.headers.get("x-forwarded-for") ?? "N/A",
+      userAgent: req.headers.get("user-agent") ?? "Unknown",
+    });
+
+    // ----------------------------------------------
+    // 7️⃣ Response
+    // ----------------------------------------------
+    return NextResponse.json({
+      success: true,
+      message: "Lease deleted successfully.",
+      data: {
+        lease_id: leaseId,
+        property_id: existingLease.property_id,
+      },
+    });
+  } catch (err: any) {
+    console.error("DELETE /api/lease/[id] Error:", err);
+
+    return NextResponse.json(
+      {
+        success: false,
+        message: err.message || "Server error",
+      },
       { status: 500 },
     );
   }

@@ -6,6 +6,7 @@ import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
@@ -37,6 +38,11 @@ import {
   Loader2,
   CheckCircle,
   XCircle,
+  Phone,
+  Globe,
+  Mail,
+  Edit,
+  Plus,
 } from "lucide-react";
 import { Can } from "@/app/components/can";
 
@@ -105,6 +111,49 @@ export default function PropertyViewPage({
     active: 0,
     expired: 0,
   });
+
+  const [brokerDialogOpen, setBrokerDialogOpen] = useState(false);
+  const [editingBroker, setEditingBroker] = useState<any | null>(null);
+  const [brokerSubmitting, setBrokerSubmitting] = useState(false);
+
+  const [brokerChanges, setBrokerChanges] = useState<any[]>([]);
+
+  const [brokerForm, setBrokerForm] = useState({
+    listing_company: "",
+    broker_name: "",
+    phone: "",
+    email: "",
+    website: "",
+    relationship: "",
+    comments: "",
+  });
+
+  const [rentScheduleDialogOpen, setRentScheduleDialogOpen] = useState(false);
+
+  const [editingRentSchedule, setEditingRentSchedule] = useState<any | null>(
+    null,
+  );
+
+  const [rentScheduleSubmitting, setRentScheduleSubmitting] = useState(false);
+
+  const [rentScheduleChanges, setRentScheduleChanges] = useState<any[]>([]);
+
+  const [rentScheduleForm, setRentScheduleForm] = useState({
+    term: "",
+    startDate: "",
+    endDate: "",
+    monthlyRent: "",
+    annualRent: "",
+    rentIncreasePercent: "",
+    psf: "",
+    capRate: "",
+  });
+
+  const [deleteTenantOpen, setDeleteTenantOpen] = useState(false);
+  const [tenantToDelete, setTenantToDelete] = useState<any | null>(null);
+  const [deletingTenant, setDeletingTenant] = useState(false);
+
+  const [leaseChanges, setLeaseChanges] = useState<any[]>([]);
 
   useEffect(() => {
     if (!propertyId) return;
@@ -213,6 +262,382 @@ export default function PropertyViewPage({
     setSelectedSchedules(defaults);
   }, [data]);
 
+  const handleAddTenant = async () => {
+    try {
+      const res = await fetch("/api/lease", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          property_id: property.property_id,
+        }),
+      });
+
+      const json = await res.json();
+
+      if (!res.ok || !json.success) {
+        toast.error(json.message || "Failed to create tenant.");
+        return;
+      }
+
+      const leaseId = json.lease?.lease_id;
+
+      if (!leaseId) {
+        toast.error("Lease was created but no lease ID was returned.");
+        return;
+      }
+
+      router.push(`/dashboard/leases/${leaseId}?fromReview=true`);
+    } catch (error) {
+      console.error("Failed to create tenant:", error);
+      toast.error("Failed to create tenant.");
+    }
+  };
+
+  const handleDeleteTenant = async (lease: any) => {
+    const leaseId = lease?.lease_id;
+
+    if (!leaseId) {
+      toast.error("Tenant lease ID is missing.");
+      return;
+    }
+
+    if (
+      !window.confirm(
+        `Remove ${lease.tenant || "this tenant"} from the property?`,
+      )
+    ) {
+      return;
+    }
+
+    /*
+     * Remove from UI immediately.
+     */
+    setData((prev: PropertyData | null) => {
+      if (!prev) return prev;
+
+      return {
+        ...prev,
+        leases: {
+          active: prev.leases.active.filter(
+            (item: any) => item.lease_id !== leaseId,
+          ),
+          expired: prev.leases.expired.filter(
+            (item: any) => item.lease_id !== leaseId,
+          ),
+        },
+      };
+    });
+
+    /*
+     * Mark lease for deletion.
+     *
+     * NOTHING is deleted from the database yet.
+     */
+    setLeaseChanges((prev) => {
+      const existingIndex = prev.findIndex(
+        (change) => change.lease_id === leaseId,
+      );
+
+      const deleteChange = {
+        lease_id: leaseId,
+        action: "delete",
+      };
+
+      if (existingIndex === -1) {
+        return [...prev, deleteChange];
+      }
+
+      const updated = [...prev];
+      updated[existingIndex] = deleteChange;
+
+      return updated;
+    });
+
+    toast.success("Tenant removal saved for approval.");
+  };
+
+  const resetBrokerForm = () => {
+    setBrokerForm({
+      listing_company: "",
+      broker_name: "",
+      phone: "",
+      email: "",
+      website: "",
+      relationship: "",
+      comments: "",
+    });
+
+    setEditingBroker(null);
+  };
+
+  const handleAddBroker = () => {
+    resetBrokerForm();
+    setBrokerDialogOpen(true);
+  };
+
+  const handleEditBroker = (broker: any) => {
+    setEditingBroker(broker);
+
+    setBrokerForm({
+      listing_company: broker.listing_company ?? "",
+      broker_name: broker.broker_name ?? "",
+      phone: broker.phone ?? "",
+      email: broker.email ?? "",
+      website: broker.website ?? "",
+      relationship: normalizeBrokerText(broker.relationship).join(", "),
+      comments: broker.comments ?? "",
+    });
+
+    setBrokerDialogOpen(true);
+  };
+
+  const handleSaveBroker = async () => {
+    const missing: string[] = [];
+
+    if (!brokerForm.broker_name.trim()) {
+      missing.push("Broker Name");
+    }
+
+    if (!brokerForm.listing_company.trim()) {
+      missing.push("Listing Company");
+    }
+
+    if (!brokerForm.phone.trim()) {
+      missing.push("Phone");
+    }
+
+    if (!brokerForm.email.trim()) {
+      missing.push("Email");
+    }
+
+    if (missing.length > 0) {
+      toast.error(`Required fields: ${missing.join(", ")}`);
+      return;
+    }
+
+    setBrokerSubmitting(true);
+
+    try {
+      const brokerData = {
+        listing_company: brokerForm.listing_company.trim(),
+        broker_name: brokerForm.broker_name.trim(),
+        phone: brokerForm.phone.trim(),
+        email: brokerForm.email.trim(),
+        website: brokerForm.website.trim() || null,
+        relationship: brokerForm.relationship.trim() || null,
+        comments: brokerForm.comments.trim() || null,
+      };
+
+      /*
+       * ============================================================
+       * NEW BROKER
+       * ============================================================
+       *
+       * Nothing is sent to the database yet.
+       *
+       * We create a temporary ID so React can track this broker
+       * until the reviewer clicks Approve.
+       */
+      if (!editingBroker) {
+        const tempId = `temp-${crypto.randomUUID()}`;
+
+        const newBroker = {
+          ...brokerData,
+
+          // Temporary UI identifier
+          contact_assignment_id: tempId,
+
+          // Used by approval API
+          _temp_id: tempId,
+          _action: "create",
+        };
+
+        // Add to the visible table
+        setData((prev: any) => {
+          if (!prev) return prev;
+
+          return {
+            ...prev,
+            contacts: [...(prev.contacts ?? []), newBroker],
+          };
+        });
+
+        // Add to pending changes
+        setBrokerChanges((prev) => [
+          ...prev,
+          {
+            ...brokerData,
+            temp_id: tempId,
+            action: "create",
+          },
+        ]);
+
+        toast.success("Broker added to review");
+
+        setBrokerDialogOpen(false);
+        resetBrokerForm();
+
+        return;
+      }
+
+      /*
+       * ============================================================
+       * EXISTING BROKER
+       * ============================================================
+       *
+       * Update the UI immediately, but do NOT update the database.
+       */
+      const assignmentId = editingBroker.contact_assignment_id;
+
+      const updatedBroker = {
+        ...editingBroker,
+        ...brokerData,
+        contact_assignment_id: assignmentId,
+        _action: "update",
+      };
+
+      // Update visible broker table
+      setData((prev: any) => {
+        if (!prev) return prev;
+
+        return {
+          ...prev,
+          contacts: (prev.contacts ?? []).map((contact: any) =>
+            contact.contact_assignment_id === assignmentId
+              ? updatedBroker
+              : contact,
+          ),
+        };
+      });
+
+      /*
+       * Check whether this broker already has a pending change.
+       *
+       * This prevents multiple update entries for the same broker.
+       */
+      setBrokerChanges((prev) => {
+        const existingIndex = prev.findIndex(
+          (change) => change.contact_assignment_id === assignmentId,
+        );
+
+        const change = {
+          ...brokerData,
+          contact_assignment_id: assignmentId,
+          action: "update",
+        };
+
+        if (existingIndex === -1) {
+          return [...prev, change];
+        }
+
+        const updated = [...prev];
+        updated[existingIndex] = change;
+
+        return updated;
+      });
+
+      toast.success("Broker changes saved for approval");
+
+      setBrokerDialogOpen(false);
+      resetBrokerForm();
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to save broker",
+      );
+    } finally {
+      setBrokerSubmitting(false);
+    }
+  };
+
+  const handleDeleteBroker = async (broker: any) => {
+    const brokerName =
+      normalizeBrokerText(broker.broker_name).join(", ") || "this broker";
+
+    if (!window.confirm(`Remove ${brokerName} from this property?`)) {
+      return;
+    }
+
+    const assignmentId = broker.contact_assignment_id;
+
+    /*
+     * ============================================================
+     * NEW BROKER THAT HAS NOT BEEN SAVED YET
+     * ============================================================
+     *
+     * If the broker was added during this review session,
+     * simply remove the pending "create" operation.
+     */
+    if (typeof assignmentId === "string" && assignmentId.startsWith("temp-")) {
+      setData((prev: any) => {
+        if (!prev) return prev;
+
+        return {
+          ...prev,
+          contacts: (prev.contacts ?? []).filter(
+            (contact: any) => contact.contact_assignment_id !== assignmentId,
+          ),
+        };
+      });
+
+      setBrokerChanges((prev) =>
+        prev.filter((change) => change.temp_id !== assignmentId),
+      );
+
+      toast.success("Broker removed from review");
+
+      return;
+    }
+
+    /*
+     * ============================================================
+     * EXISTING BROKER
+     * ============================================================
+     *
+     * Do NOT DELETE from the database yet.
+     *
+     * Mark the assignment as "delete" and remove it from the
+     * visible table.
+     */
+    setData((prev: any) => {
+      if (!prev) return prev;
+
+      return {
+        ...prev,
+        contacts: (prev.contacts ?? []).filter(
+          (contact: any) => contact.contact_assignment_id !== assignmentId,
+        ),
+      };
+    });
+
+    setBrokerChanges((prev) => {
+      const existingIndex = prev.findIndex(
+        (change) => change.contact_assignment_id === assignmentId,
+      );
+
+      const deleteChange = {
+        contact_assignment_id: assignmentId,
+        action: "delete",
+      };
+
+      /*
+       * If the broker was already modified during this review,
+       * replace that modification with delete.
+       */
+      if (existingIndex !== -1) {
+        const updated = [...prev];
+        updated[existingIndex] = deleteChange;
+
+        return updated;
+      }
+
+      return [...prev, deleteChange];
+    });
+
+    toast.success("Broker removal saved for approval");
+  };
+
   function handleChange(field: string, value: any) {
     setForm((prev: any) => ({
       ...prev,
@@ -239,17 +664,315 @@ export default function PropertyViewPage({
     return url;
   }
 
+  const resetRentScheduleForm = () => {
+    setRentScheduleForm({
+      term: "",
+      startDate: "",
+      endDate: "",
+      monthlyRent: "",
+      annualRent: "",
+      rentIncreasePercent: "",
+      psf: "",
+      capRate: "",
+    });
+
+    setEditingRentSchedule(null);
+  };
+
+  const handleAddRentSchedule = () => {
+    resetRentScheduleForm();
+    setRentScheduleDialogOpen(true);
+  };
+
+  const handleEditRentSchedule = (schedule: any) => {
+    setEditingRentSchedule(schedule);
+
+    setRentScheduleForm({
+      term: schedule.term ?? "",
+      startDate: schedule.startDate ?? schedule.startDateRaw ?? "",
+      endDate: schedule.endDate ?? schedule.endDateRaw ?? "",
+      monthlyRent:
+        schedule.monthlyRent != null ? String(schedule.monthlyRent) : "",
+      annualRent:
+        schedule.annualRent != null ? String(schedule.annualRent) : "",
+      rentIncreasePercent:
+        schedule.rentIncreasePercent != null
+          ? String(schedule.rentIncreasePercent)
+          : "",
+      psf: schedule.psf != null ? String(schedule.psf) : "",
+      capRate: schedule.capRate != null ? String(schedule.capRate) : "",
+    });
+
+    setRentScheduleDialogOpen(true);
+  };
+
+  const handleSaveRentSchedule = async () => {
+    const missing: string[] = [];
+
+    if (!rentScheduleForm.startDate.trim()) {
+      missing.push("Start Date");
+    }
+
+    if (
+      !rentScheduleForm.psf.trim() &&
+      !rentScheduleForm.monthlyRent.trim() &&
+      !rentScheduleForm.annualRent.trim()
+    ) {
+      missing.push("PSF, Monthly Rent, or Annual Rent");
+    }
+
+    if (missing.length > 0) {
+      toast.error(`Required fields: ${missing.join(", ")}`);
+      return;
+    }
+
+    setRentScheduleSubmitting(true);
+
+    try {
+      const scheduleData = {
+        term: rentScheduleForm.term.trim() || null,
+        startDate: rentScheduleForm.startDate.trim() || null,
+        endDate: rentScheduleForm.endDate.trim() || null,
+
+        monthlyRent: rentScheduleForm.monthlyRent.trim()
+          ? Number(rentScheduleForm.monthlyRent)
+          : null,
+
+        annualRent: rentScheduleForm.annualRent.trim()
+          ? Number(rentScheduleForm.annualRent)
+          : null,
+
+        rentIncreasePercent: rentScheduleForm.rentIncreasePercent.trim()
+          ? Number(rentScheduleForm.rentIncreasePercent)
+          : null,
+
+        psf: rentScheduleForm.psf.trim() ? Number(rentScheduleForm.psf) : null,
+
+        capRate: rentScheduleForm.capRate.trim()
+          ? Number(rentScheduleForm.capRate)
+          : null,
+      };
+
+      /*
+       * ============================================================
+       * CREATE
+       * ============================================================
+       */
+      if (!editingRentSchedule) {
+        const tempId = `temp-rent-${crypto.randomUUID()}`;
+
+        const newSchedule = {
+          ...scheduleData,
+
+          id: tempId,
+
+          // Used only by the UI
+          _temp_id: tempId,
+          _action: "create",
+        };
+
+        setRentSchedule((prev) => [...prev, newSchedule]);
+
+        setRentScheduleChanges((prev) => [
+          ...prev,
+          {
+            ...scheduleData,
+            temp_id: tempId,
+            action: "create",
+          },
+        ]);
+
+        toast.success("Rent schedule added to review");
+
+        setRentScheduleDialogOpen(false);
+        resetRentScheduleForm();
+
+        return;
+      }
+
+      /*
+       * ============================================================
+       * UPDATE
+       * ============================================================
+       */
+
+      const scheduleId =
+        editingRentSchedule.id ?? editingRentSchedule.rent_schedule_id;
+
+      /*
+       * If this is a temporary schedule, it has never
+       * been committed to the database.
+       */
+      if (
+        typeof scheduleId === "string" &&
+        scheduleId.startsWith("temp-rent-")
+      ) {
+        const updatedSchedule = {
+          ...editingRentSchedule,
+          ...scheduleData,
+          id: scheduleId,
+          _temp_id: scheduleId,
+          _action: "create",
+        };
+
+        setRentSchedule((prev) =>
+          prev.map((schedule) =>
+            schedule.id === scheduleId ? updatedSchedule : schedule,
+          ),
+        );
+
+        setRentScheduleChanges((prev) =>
+          prev.map((change) =>
+            change.temp_id === scheduleId
+              ? {
+                  ...scheduleData,
+                  temp_id: scheduleId,
+                  action: "create",
+                }
+              : change,
+          ),
+        );
+
+        toast.success("Rent schedule changes saved for review");
+
+        setRentScheduleDialogOpen(false);
+        resetRentScheduleForm();
+
+        return;
+      }
+
+      /*
+       * Existing database schedule
+       */
+      const updatedSchedule = {
+        ...editingRentSchedule,
+        ...scheduleData,
+        id: scheduleId,
+        _action: "update",
+      };
+
+      setRentSchedule((prev) =>
+        prev.map((schedule) =>
+          (schedule.id ?? schedule.rent_schedule_id) === scheduleId
+            ? updatedSchedule
+            : schedule,
+        ),
+      );
+
+      setRentScheduleChanges((prev) => {
+        const existingIndex = prev.findIndex(
+          (change) => change.rent_schedule_id === scheduleId,
+        );
+
+        const change = {
+          ...scheduleData,
+          rent_schedule_id: scheduleId,
+          action: "update",
+        };
+
+        if (existingIndex === -1) {
+          return [...prev, change];
+        }
+
+        const updated = [...prev];
+        updated[existingIndex] = change;
+
+        return updated;
+      });
+
+      toast.success("Rent schedule changes saved for approval");
+
+      setRentScheduleDialogOpen(false);
+      resetRentScheduleForm();
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to save rent schedule",
+      );
+    } finally {
+      setRentScheduleSubmitting(false);
+    }
+  };
+
+  const handleDeleteRentSchedule = async (schedule: any) => {
+    const scheduleId = schedule.id ?? schedule.rent_schedule_id;
+
+    if (!window.confirm("Remove this rent schedule from the property?")) {
+      return;
+    }
+
+    /*
+     * ============================================================
+     * TEMPORARY SCHEDULE
+     * ============================================================
+     */
+    if (typeof scheduleId === "string" && scheduleId.startsWith("temp-rent-")) {
+      setRentSchedule((prev) =>
+        prev.filter(
+          (item) => (item.id ?? item.rent_schedule_id) !== scheduleId,
+        ),
+      );
+
+      setRentScheduleChanges((prev) =>
+        prev.filter((change) => change.temp_id !== scheduleId),
+      );
+
+      toast.success("Rent schedule removed from review");
+
+      return;
+    }
+
+    /*
+     * ============================================================
+     * EXISTING DATABASE SCHEDULE
+     * ============================================================
+     */
+
+    setRentSchedule((prev) =>
+      prev.filter((item) => (item.id ?? item.rent_schedule_id) !== scheduleId),
+    );
+
+    setRentScheduleChanges((prev) => {
+      const existingIndex = prev.findIndex(
+        (change) => change.rent_schedule_id === scheduleId,
+      );
+
+      const deleteChange = {
+        rent_schedule_id: scheduleId,
+        action: "delete",
+      };
+
+      if (existingIndex === -1) {
+        return [...prev, deleteChange];
+      }
+
+      const updated = [...prev];
+      updated[existingIndex] = deleteChange;
+
+      return updated;
+    });
+
+    toast.success("Rent schedule removal saved for approval");
+  };
+
   /* -------------------------------------------
-   APPROVE FUNCTION
+    APPROVE FUNCTION
   --------------------------------------------*/
   async function handleApprove() {
     if (!propertyId) return;
+
+    const hasBrokerChanges = brokerChanges.length > 0;
+    const hasRentScheduleChanges = rentScheduleChanges.length > 0;
+    const hasLeaseChanges = leaseChanges.length > 0;
 
     setProcessing(true);
 
     toast.promise(
       (async () => {
-        // 1. Save any edits first
+        /*
+         * ============================================================
+         * 1. SAVE PROPERTY CHANGES
+         * ============================================================
+         */
         const updateRes = await fetch(`/api/properties/${propertyId}`, {
           method: "PUT",
           headers: {
@@ -278,7 +1001,9 @@ export default function PropertyViewPage({
           throw new Error(updateJson.message || "Failed to update property");
         }
 
-        // Keep UI in sync
+        /*
+         * Keep UI in sync
+         */
         setData((prev: any) => ({
           ...prev,
           property: updateJson.data ?? {
@@ -287,7 +1012,100 @@ export default function PropertyViewPage({
           },
         }));
 
-        // 2. Approve the property
+        /*
+         * ============================================================
+         * 2. SAVE PENDING BROKER CHANGES
+         * ============================================================
+         *
+         * brokerChanges contains:
+         *
+         *   action: "create"
+         *   action: "update"
+         *   action: "delete"
+         *
+         * Nothing was written to the database while reviewing.
+         * This is the point where we commit those changes.
+         */
+        if (brokerChanges.length > 0) {
+          const brokerRes = await fetch("/api/properties/broker", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              property_id: propertyId,
+              changes: brokerChanges,
+            }),
+          });
+
+          const brokerJson = await brokerRes.json();
+
+          if (!brokerRes.ok || !brokerJson.success) {
+            throw new Error(
+              brokerJson.message || "Failed to save broker changes",
+            );
+          }
+        }
+
+        /*
+         * ============================================================
+         * 3. SAVE PENDING RENT SCHEDULE CHANGES
+         * ============================================================
+         */
+        if (rentScheduleChanges.length > 0) {
+          const rentScheduleRes = await fetch("/api/properties/rent-schedule", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              property_id: propertyId,
+              changes: rentScheduleChanges,
+            }),
+          });
+
+          const rentScheduleJson = await rentScheduleRes.json();
+
+          if (!rentScheduleRes.ok || !rentScheduleJson.success) {
+            throw new Error(
+              rentScheduleJson.message ||
+                "Failed to save rent schedule changes",
+            );
+          }
+        }
+
+        /*
+         * ============================================================
+         * 4. SAVE PENDING LEASE CHANGES
+         * ============================================================
+         *
+         * Lease changes are committed only when the property
+         * reviewer clicks Approve.
+         */
+        if (leaseChanges.length > 0) {
+          for (const change of leaseChanges) {
+            if (change.action === "delete") {
+              const deleteRes = await fetch(`/api/lease/${change.lease_id}`, {
+                method: "DELETE",
+              });
+
+              const deleteJson = await deleteRes.json();
+
+              if (!deleteRes.ok || !deleteJson.success) {
+                throw new Error(
+                  deleteJson.message ||
+                    `Failed to delete lease ${change.lease_id}`,
+                );
+              }
+            }
+          }
+        }
+
+        /*
+         * ============================================================
+         * 5. APPROVE PROPERTY
+         * ============================================================
+         */
         const approveRes = await fetch("/api/review/action", {
           method: "POST",
           headers: {
@@ -301,14 +1119,26 @@ export default function PropertyViewPage({
 
         const approveJson = await approveRes.json();
 
-        if (!approveRes.ok) {
-          throw new Error(approveJson.error || "Failed to approve property");
+        if (!approveRes.ok || !approveJson.success) {
+          throw new Error(
+            approveJson.error ||
+              approveJson.message ||
+              "Failed to approve property",
+          );
         }
 
+        /*
+         * Clear pending broker changes after successful approval.
+         */
+        setBrokerChanges([]);
+        setRentScheduleChanges([]);
+        setLeaseChanges([]);
         return approveJson;
       })(),
       {
-        loading: "Saving changes and approving property...",
+        loading: brokerChanges.length
+          ? "Saving property and broker changes, then approving..."
+          : "Saving changes and approving property...",
 
         success: () => {
           setApproveOpen(false);
@@ -317,6 +1147,34 @@ export default function PropertyViewPage({
 
           router.push("/dashboard/review");
           router.refresh();
+
+          if (hasBrokerChanges && hasRentScheduleChanges && hasLeaseChanges) {
+            return "Property, tenant, broker, and rent schedule changes approved successfully";
+          }
+
+          if (hasBrokerChanges && hasRentScheduleChanges) {
+            return "Property, broker, and rent schedule changes approved successfully";
+          }
+
+          if (hasBrokerChanges && hasLeaseChanges) {
+            return "Property, tenant, and broker changes approved successfully";
+          }
+
+          if (hasRentScheduleChanges && hasLeaseChanges) {
+            return "Property, tenant, and rent schedule changes approved successfully";
+          }
+
+          if (hasLeaseChanges) {
+            return "Property and tenant changes approved successfully";
+          }
+
+          if (hasBrokerChanges) {
+            return "Property and broker changes approved successfully";
+          }
+
+          if (hasRentScheduleChanges) {
+            return "Property and rent schedule changes approved successfully";
+          }
 
           return "Property updated and approved successfully";
         },
@@ -332,7 +1190,7 @@ export default function PropertyViewPage({
   }
 
   /* -------------------------------------------
-   REJECT FUNCTION
+    REJECT FUNCTION
   --------------------------------------------*/
   async function handleReject() {
     if (!propertyId) return;
@@ -341,20 +1199,31 @@ export default function PropertyViewPage({
 
     toast.promise(
       (async () => {
+        /*
+         * Broker changes are only stored in React state.
+         * Rejecting the property therefore automatically discards
+         * those pending changes.
+         */
+
         const res = await fetch(`/api/properties/${propertyId}`, {
           method: "DELETE",
         });
 
         const json = await res.json();
 
-        if (!res.ok) {
+        if (!res.ok || !json.success) {
           throw new Error(json.message || "Failed to reject property");
         }
+
+        /*
+         * Clear any pending broker changes from memory.
+         */
+        setBrokerChanges([]);
 
         return json;
       })(),
       {
-        loading: "Rejecting and deleting property...",
+        loading: "Rejecting property...",
 
         success: () => {
           setRejectOpen(false);
@@ -364,7 +1233,7 @@ export default function PropertyViewPage({
           router.push("/dashboard/review");
           router.refresh();
 
-          return "Property rejected and deleted successfully";
+          return "Property rejected successfully";
         },
 
         error: (err) =>
@@ -610,7 +1479,23 @@ export default function PropertyViewPage({
       </InfoSection>
 
       {/* LEASES */}
-      <InfoSection icon={<Users />} title="Tenant">
+      <InfoSection
+        icon={<Users />}
+        title={
+          <div className="flex items-center justify-between w-full">
+            <span>Tenant</span>
+
+            <Button
+              size="sm"
+              onClick={handleAddTenant}
+              className="bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-2"
+            >
+              <Plus className="w-4 h-4" />
+              Add Tenant
+            </Button>
+          </div>
+        }
+      >
         <Tabs defaultValue="active" className="w-full">
           <TabsList className="mb-4">
             <TabsTrigger value="active" className="flex items-center">
@@ -656,6 +1541,7 @@ export default function PropertyViewPage({
                       <TableCell>{display(lease.tenant)}</TableCell>
 
                       <TableCell>{display(lease.suite_unit)}</TableCell>
+
                       <TableCell className="text-right pr-10">
                         {(() => {
                           const size = getLeaseSize(lease);
@@ -684,7 +1570,6 @@ export default function PropertyViewPage({
                           onValueChange={(value) => {
                             setSelectedSchedules((prev) => ({
                               ...prev,
-
                               [lease.lease_id]: value,
                             }));
                           }}
@@ -702,9 +1587,7 @@ export default function PropertyViewPage({
                                 {new Date(
                                   schedule.start_date,
                                 ).toLocaleDateString()}
-
                                 {" - "}
-
                                 {schedule.end_date
                                   ? new Date(
                                       schedule.end_date,
@@ -762,17 +1645,31 @@ export default function PropertyViewPage({
                         })()}
                       </TableCell>
 
-                      <TableCell className="text-center">
-                        <Button
-                          size="sm"
-                          onClick={() =>
-                            router.push(`/dashboard/leases/${lease.lease_id}`)
-                          }
-                          className="bg-blue-600 hover:bg-blue-700 text-white"
-                        >
-                          <Eye size={16} className="mr-1" />
-                          View
-                        </Button>
+                      <TableCell>
+                        <div className="flex items-center justify-center gap-2">
+                          <Button
+                            size="sm"
+                            onClick={() =>
+                              router.push(
+                                `/dashboard/leases/${lease.lease_id}?fromReview=true`,
+                              )
+                            }
+                            className="bg-blue-600 hover:bg-blue-700 text-white"
+                          >
+                            <Edit size={16} className="mr-1" />
+                            Update
+                          </Button>
+
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleDeleteTenant(lease)}
+                            className="text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
+                          >
+                            <CircleX size={16} className="mr-1" />
+                            Remove
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -852,17 +1749,31 @@ export default function PropertyViewPage({
                         })()}
                       </TableCell>
 
-                      <TableCell className="text-center">
-                        <Button
-                          size="sm"
-                          onClick={() =>
-                            router.push(`/dashboard/leases/${lease.lease_id}`)
-                          }
-                          className="bg-blue-600 hover:bg-blue-700 text-white"
-                        >
-                          <Eye size={16} className="mr-1" />
-                          View
-                        </Button>
+                      <TableCell>
+                        <div className="flex items-center justify-center gap-2">
+                          <Button
+                            size="sm"
+                            onClick={() =>
+                              router.push(
+                                `/dashboard/leases/${lease.lease_id}?fromReview=true`,
+                              )
+                            }
+                            className="bg-blue-600 hover:bg-blue-700 text-white"
+                          >
+                            <Edit size={16} className="mr-1" />
+                            Update
+                          </Button>
+
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleDeleteTenant(lease)}
+                            className="text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
+                          >
+                            <CircleX size={16} className="mr-1" />
+                            Remove
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -875,20 +1786,53 @@ export default function PropertyViewPage({
 
       {/* RENT SCHEDULE */}
       <InfoSection icon={<DollarSign />} title="Rent Schedule">
+        {/* HEADER */}
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <p className="text-sm text-gray-500">
+              Rent schedule and rental escalation information for this property.
+            </p>
+          </div>
+
+          <Button
+            type="button"
+            onClick={handleAddRentSchedule}
+            className="bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-2"
+          >
+            <DollarSign className="w-4 h-4" />
+            Add Rent Schedule
+          </Button>
+        </div>
+
         {rentSchedule.length === 0 ? (
-          <p className="text-gray-500">No rent schedule available.</p>
+          <div className="border rounded-md p-8 text-center">
+            <DollarSign className="w-10 h-10 mx-auto text-gray-400 mb-3" />
+
+            <p className="text-gray-500 font-medium">
+              No rent schedule available.
+            </p>
+
+            <p className="text-sm text-gray-400 mt-1">
+              Click &quot;Add Rent Schedule&quot; to add one.
+            </p>
+          </div>
         ) : (
           (() => {
-            // ✅ Column visibility (include RAW fallback fields)
             const columnVisibility = {
               startDate: rentSchedule.some(
                 (r) => r.startDate || r.startDateRaw,
               ),
+
               endDate: rentSchedule.some((r) => r.endDate || r.endDateRaw),
+
               monthlyRent: hasAnyValue(rentSchedule, "monthlyRent"),
+
               annualRent: hasAnyValue(rentSchedule, "annualRent"),
+
               psf: hasAnyValue(rentSchedule, "psf"),
+
               capRate: hasAnyValue(rentSchedule, "capRate"),
+
               rentIncreasePercent: hasAnyValue(
                 rentSchedule,
                 "rentIncreasePercent",
@@ -926,17 +1870,23 @@ export default function PropertyViewPage({
                     {columnVisibility.capRate && (
                       <TableHead>Cap Rate</TableHead>
                     )}
+
+                    <TableHead className="text-center w-[170px]">
+                      Action
+                    </TableHead>
                   </TableRow>
                 </TableHeader>
 
                 <TableBody>
                   {rentSchedule.map((r) => {
+                    const scheduleId = r.id ?? r.rent_schedule_id;
+
                     const startDateValue = r.startDate ?? r.startDateRaw ?? "-";
 
                     const endDateValue = r.endDate ?? r.endDateRaw ?? "-";
 
                     return (
-                      <TableRow key={r.id}>
+                      <TableRow key={scheduleId}>
                         <TableCell>{r.term || "-"}</TableCell>
 
                         {columnVisibility.startDate && (
@@ -961,7 +1911,7 @@ export default function PropertyViewPage({
 
                         {columnVisibility.rentIncreasePercent && (
                           <TableCell>
-                            {r.rentIncreasePercent
+                            {r.rentIncreasePercent != null
                               ? `${r.rentIncreasePercent}%`
                               : "-"}
                           </TableCell>
@@ -969,15 +1919,42 @@ export default function PropertyViewPage({
 
                         {columnVisibility.psf && (
                           <TableCell>
-                            {r.psf ? `$${Number(r.psf).toFixed(2)}` : "-"}
+                            {r.psf != null
+                              ? `$${Number(r.psf).toFixed(2)}`
+                              : "-"}
                           </TableCell>
                         )}
 
                         {columnVisibility.capRate && (
                           <TableCell>
-                            {r.capRate ? `${r.capRate}%` : "-"}
+                            {r.capRate != null ? `${r.capRate}%` : "-"}
                           </TableCell>
                         )}
+
+                        <TableCell>
+                          <div className="flex justify-center gap-2">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleEditRentSchedule(r)}
+                            >
+                              <Pencil className="w-4 h-4 mr-1" />
+                              Edit
+                            </Button>
+
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleDeleteRentSchedule(r)}
+                              className="text-red-600 border-red-200 hover:bg-red-50"
+                            >
+                              <CircleX className="w-4 h-4 mr-1" />
+                              Remove
+                            </Button>
+                          </div>
+                        </TableCell>
                       </TableRow>
                     );
                   })}
@@ -986,16 +1963,60 @@ export default function PropertyViewPage({
             );
           })()
         )}
+
+        <RentScheduleDialog
+          open={rentScheduleDialogOpen}
+          onOpenChange={(open) => {
+            setRentScheduleDialogOpen(open);
+
+            if (!open) {
+              resetRentScheduleForm();
+            }
+          }}
+          form={rentScheduleForm}
+          setForm={setRentScheduleForm}
+          editingSchedule={editingRentSchedule}
+          submitting={rentScheduleSubmitting}
+          onSubmit={handleSaveRentSchedule}
+        />
       </InfoSection>
 
-      {/* CONTACTS */}
+      {/* BROKERS */}
       <InfoSection icon={<Users />} title="Brokers">
+        {/* HEADER / ADD BUTTON */}
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <p className="text-sm text-gray-500">
+              Brokers and listing contacts assigned to this property.
+            </p>
+          </div>
+
+          <Button
+            type="button"
+            onClick={handleAddBroker}
+            className="bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-2"
+          >
+            <Users className="w-4 h-4" />
+            Add Broker
+          </Button>
+        </div>
+
+        {/* BROKER TABLE */}
         {contacts.length === 0 ? (
-          <p className="text-gray-500">
-            No contacts assigned to this property.
-          </p>
+          <div className="border rounded-md p-8 text-center">
+            <Users className="w-10 h-10 mx-auto text-gray-400 mb-3" />
+
+            <p className="text-gray-500 font-medium">
+              No brokers assigned to this property.
+            </p>
+
+            <p className="text-sm text-gray-400 mt-1">
+              Click &quot;Add Broker&quot; to assign a broker or listing
+              contact.
+            </p>
+          </div>
         ) : (
-          <Table>
+          <Table containerClassName="max-h-[400px] border rounded-md">
             <TableHeader>
               <TableRow>
                 <TableHead>Relationship</TableHead>
@@ -1005,42 +2026,100 @@ export default function PropertyViewPage({
                 <TableHead>Email</TableHead>
                 <TableHead>Website</TableHead>
                 <TableHead>Comments</TableHead>
+                <TableHead className="text-center w-[150px]">Action</TableHead>
               </TableRow>
             </TableHeader>
 
             <TableBody>
               {contacts.map((c: any) => (
                 <TableRow key={c.contact_assignment_id}>
+                  {/* RELATIONSHIP */}
                   <TableCell>
                     {display(normalizeBrokerText(c.relationship).join(", "))}
                   </TableCell>
 
+                  {/* LISTING COMPANY */}
                   <TableCell>{display(c.listing_company)}</TableCell>
 
+                  {/* BROKER */}
                   <TableCell>
                     {display(normalizeBrokerText(c.broker_name).join(", "))}
                   </TableCell>
 
+                  {/* PHONE */}
                   <TableCell>
                     {display(normalizeBrokerText(c.phone).join(", "))}
                   </TableCell>
 
+                  {/* EMAIL */}
                   <TableCell>
                     {display(
                       normalizeBrokerText(c.email)
-                        .map((e) => e.replace(/-/g, ".")) // ✅ restore dots
+                        .map((e) => e.replace(/-/g, "."))
                         .join(", "),
                     )}
                   </TableCell>
 
+                  {/* WEBSITE */}
                   <TableCell>{display(c.website)}</TableCell>
 
-                  <TableCell>{display(c.comments)}</TableCell>
+                  {/* COMMENTS */}
+                  <TableCell className="max-w-[250px]">
+                    <div className="truncate" title={c.comments || ""}>
+                      {display(c.comments)}
+                    </div>
+                  </TableCell>
+
+                  {/* ACTIONS */}
+                  <TableCell>
+                    <div className="flex items-center justify-center gap-2">
+                      {/* EDIT */}
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleEditBroker(c)}
+                        className="flex items-center gap-1"
+                      >
+                        <Pencil className="w-4 h-4" />
+                        Edit
+                      </Button>
+
+                      {/* REMOVE */}
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleDeleteBroker(c)}
+                        className="flex items-center gap-1 text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
+                      >
+                        <CircleX className="w-4 h-4" />
+                        Remove
+                      </Button>
+                    </div>
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
           </Table>
         )}
+
+        {/* BROKER DIALOG */}
+        <BrokerDialog
+          open={brokerDialogOpen}
+          onOpenChange={(open) => {
+            setBrokerDialogOpen(open);
+
+            if (!open) {
+              resetBrokerForm();
+            }
+          }}
+          form={brokerForm}
+          setForm={setBrokerForm}
+          editingBroker={editingBroker}
+          submitting={brokerSubmitting}
+          onSubmit={handleSaveBroker}
+        />
       </InfoSection>
 
       {/* COMMENTS */}
@@ -1197,6 +2276,76 @@ export default function PropertyViewPage({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog
+        open={deleteTenantOpen}
+        onOpenChange={(open) => {
+          if (!deletingTenant) {
+            setDeleteTenantOpen(open);
+
+            if (!open) {
+              setTenantToDelete(null);
+            }
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600">
+              <CircleX className="w-5 h-5" />
+              Delete Tenant?
+            </DialogTitle>
+
+            <DialogDescription>
+              This will permanently delete the tenant lease from this property.
+              <br />
+              <br />
+              <span className="font-semibold text-gray-900">
+                {tenantToDelete?.tenant || "Unnamed Tenant"}
+              </span>
+              {tenantToDelete?.suite_unit && (
+                <> — Unit {tenantToDelete.suite_unit}</>
+              )}
+              <br />
+              <br />
+              <span className="text-red-600 font-medium">
+                This action cannot be undone.
+              </span>
+            </DialogDescription>
+          </DialogHeader>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              disabled={deletingTenant}
+              onClick={() => {
+                setDeleteTenantOpen(false);
+                setTenantToDelete(null);
+              }}
+            >
+              Cancel
+            </Button>
+
+            <Button
+              disabled={deletingTenant}
+              onClick={handleDeleteTenant}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              {deletingTenant ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                <>
+                  <CircleX className="w-4 h-4 mr-2" />
+                  Delete Tenant
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -1210,16 +2359,16 @@ function InfoSection({
   icon,
   children,
 }: {
-  title: string;
+  title: React.ReactNode;
   icon: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
     <div className="space-y-3">
-      <h3 className="text-xl font-semibold flex items-center gap-2 text-gray-800">
-        <span className="text-blue-600">{icon}</span>
+      <div className="flex items-center gap-2 text-lg font-semibold text-gray-800">
+        {icon}
         {title}
-      </h3>
+      </div>
 
       <div className="p-5 border rounded-xl bg-white shadow-sm">{children}</div>
     </div>
@@ -1520,3 +2669,419 @@ const getDefaultScheduleId = (lease: any): string => {
   // Otherwise use the last schedule
   return schedules[schedules.length - 1].rent_schedule_id;
 };
+
+function BrokerDialog({
+  open,
+  onOpenChange,
+  form,
+  setForm,
+  editingBroker,
+  submitting,
+  onSubmit,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  form: any;
+  setForm: React.Dispatch<React.SetStateAction<any>>;
+  editingBroker: any | null;
+  submitting: boolean;
+  onSubmit: () => void;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[700px]">
+        <DialogHeader>
+          <DialogTitle>
+            {editingBroker ? "Update Broker" : "Add Broker"}
+          </DialogTitle>
+
+          <DialogDescription>
+            {editingBroker
+              ? "Update the broker information assigned to this property."
+              : "Add a broker or listing contact to this property."}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-5">
+          {/* BROKER + COMPANY */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <Label className="flex items-center gap-2">
+                <Users className="h-4 w-4 text-gray-500" />
+                Broker Name
+                <span className="text-red-500">*</span>
+              </Label>
+
+              <Input
+                value={form.broker_name}
+                onChange={(e) =>
+                  setForm((prev: any) => ({
+                    ...prev,
+                    broker_name: e.target.value,
+                  }))
+                }
+                placeholder="Broker Name"
+              />
+            </div>
+
+            <div>
+              <Label className="flex items-center gap-2">
+                <Building2 className="h-4 w-4 text-gray-500" />
+                Listing Company
+                <span className="text-red-500">*</span>
+              </Label>
+
+              <Input
+                value={form.listing_company}
+                onChange={(e) =>
+                  setForm((prev: any) => ({
+                    ...prev,
+                    listing_company: e.target.value,
+                  }))
+                }
+                placeholder="Listing Company"
+              />
+            </div>
+          </div>
+
+          {/* CONTACT */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <Label className="flex items-center gap-2">
+                <Phone className="h-4 w-4 text-gray-500" />
+                Phone
+                <span className="text-red-500">*</span>
+              </Label>
+
+              <Input
+                value={form.phone}
+                onChange={(e) =>
+                  setForm((prev: any) => ({
+                    ...prev,
+                    phone: e.target.value,
+                  }))
+                }
+                placeholder="Phone"
+              />
+            </div>
+
+            <div>
+              <Label className="flex items-center gap-2">
+                <Mail className="h-4 w-4 text-gray-500" />
+                Email
+                <span className="text-red-500">*</span>
+              </Label>
+
+              <Input
+                type="email"
+                value={form.email}
+                onChange={(e) =>
+                  setForm((prev: any) => ({
+                    ...prev,
+                    email: e.target.value,
+                  }))
+                }
+                placeholder="Email Address"
+              />
+            </div>
+          </div>
+
+          {/* WEBSITE */}
+          <div>
+            <Label className="flex items-center gap-2">
+              <Globe className="h-4 w-4 text-gray-500" />
+              Website
+            </Label>
+
+            <Input
+              value={form.website}
+              onChange={(e) =>
+                setForm((prev: any) => ({
+                  ...prev,
+                  website: e.target.value,
+                }))
+              }
+              placeholder="https://example.com"
+            />
+          </div>
+
+          {/* RELATIONSHIP */}
+          <div>
+            <Label>Relationship</Label>
+
+            <Input
+              value={form.relationship}
+              onChange={(e) =>
+                setForm((prev: any) => ({
+                  ...prev,
+                  relationship: e.target.value,
+                }))
+              }
+              placeholder="Listing Broker, Tenant Rep, Owner Rep..."
+            />
+          </div>
+
+          {/* COMMENTS */}
+          <div>
+            <Label>Comments</Label>
+
+            <textarea
+              value={form.comments}
+              onChange={(e) =>
+                setForm((prev: any) => ({
+                  ...prev,
+                  comments: e.target.value,
+                }))
+              }
+              rows={4}
+              className="w-full rounded-md border mt-2 border-gray-300 bg-white px-3 py-3 text-sm shadow-sm focus:ring-2 focus:ring-blue-500 resize-none"
+              placeholder="Additional notes..."
+            />
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={submitting}
+            onClick={() => onOpenChange(false)}
+          >
+            Cancel
+          </Button>
+
+          <Button
+            type="button"
+            disabled={submitting}
+            onClick={onSubmit}
+            className="bg-blue-600 hover:bg-blue-700 text-white"
+          >
+            {submitting ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Saving...
+              </>
+            ) : (
+              <>
+                <Save className="w-4 h-4 mr-2" />
+                {editingBroker ? "Save Changes" : "Add Broker"}
+              </>
+            )}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function RentScheduleDialog({
+  open,
+  onOpenChange,
+  form,
+  setForm,
+  editingSchedule,
+  submitting,
+  onSubmit,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  form: any;
+  setForm: React.Dispatch<React.SetStateAction<any>>;
+  editingSchedule: any | null;
+  submitting: boolean;
+  onSubmit: () => void;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>
+            {editingSchedule ? "Update Rent Schedule" : "Add Rent Schedule"}
+          </DialogTitle>
+
+          <DialogDescription>
+            {editingSchedule
+              ? "Update the rent schedule information for this property."
+              : "Add a rent schedule to this property."}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-5">
+          {/* TERM */}
+          <div>
+            <Label>Term</Label>
+
+            <Input
+              value={form.term}
+              onChange={(e) =>
+                setForm((prev: any) => ({
+                  ...prev,
+                  term: e.target.value,
+                }))
+              }
+              placeholder="Year 1, Year 2, Renewal..."
+            />
+          </div>
+
+          {/* DATES */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <Label>
+                Start Date
+                <span className="text-red-500">*</span>
+              </Label>
+
+              <Input
+                type="date"
+                value={form.startDate}
+                onChange={(e) =>
+                  setForm((prev: any) => ({
+                    ...prev,
+                    startDate: e.target.value,
+                  }))
+                }
+              />
+            </div>
+
+            <div>
+              <Label>End Date</Label>
+
+              <Input
+                type="date"
+                value={form.endDate}
+                onChange={(e) =>
+                  setForm((prev: any) => ({
+                    ...prev,
+                    endDate: e.target.value,
+                  }))
+                }
+              />
+            </div>
+          </div>
+
+          {/* RENT */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <Label>Monthly Rent</Label>
+
+              <Input
+                type="number"
+                step="0.01"
+                value={form.monthlyRent}
+                onChange={(e) =>
+                  setForm((prev: any) => ({
+                    ...prev,
+                    monthlyRent: e.target.value,
+                  }))
+                }
+                placeholder="0.00"
+              />
+            </div>
+
+            <div>
+              <Label>Annual Rent</Label>
+
+              <Input
+                type="number"
+                step="0.01"
+                value={form.annualRent}
+                onChange={(e) =>
+                  setForm((prev: any) => ({
+                    ...prev,
+                    annualRent: e.target.value,
+                  }))
+                }
+                placeholder="0.00"
+              />
+            </div>
+          </div>
+
+          {/* PSF + INCREASE */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <Label>Rent PSF</Label>
+
+              <Input
+                type="number"
+                step="0.01"
+                value={form.psf}
+                onChange={(e) =>
+                  setForm((prev: any) => ({
+                    ...prev,
+                    psf: e.target.value,
+                  }))
+                }
+                placeholder="0.00"
+              />
+            </div>
+
+            <div>
+              <Label>Rent Increase %</Label>
+
+              <Input
+                type="number"
+                step="0.01"
+                value={form.rentIncreasePercent}
+                onChange={(e) =>
+                  setForm((prev: any) => ({
+                    ...prev,
+                    rentIncreasePercent: e.target.value,
+                  }))
+                }
+                placeholder="0.00"
+              />
+            </div>
+          </div>
+
+          {/* CAP RATE */}
+          <div>
+            <Label>Cap Rate %</Label>
+
+            <Input
+              type="number"
+              step="0.01"
+              value={form.capRate}
+              onChange={(e) =>
+                setForm((prev: any) => ({
+                  ...prev,
+                  capRate: e.target.value,
+                }))
+              }
+              placeholder="0.00"
+            />
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={submitting}
+            onClick={() => onOpenChange(false)}
+          >
+            Cancel
+          </Button>
+
+          <Button
+            type="button"
+            disabled={submitting}
+            onClick={onSubmit}
+            className="bg-blue-600 hover:bg-blue-700 text-white"
+          >
+            {submitting ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Saving...
+              </>
+            ) : (
+              <>
+                <Save className="w-4 h-4 mr-2" />
+                {editingSchedule ? "Save Changes" : "Add Rent Schedule"}
+              </>
+            )}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}

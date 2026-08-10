@@ -48,7 +48,7 @@ export async function GET(req: Request) {
 
     // 4️⃣ Build count query — FORCE FAILED ONLY
     let query = supabase
-      .from("document_registry")
+      .from("vw_document_registry")
       .select("*", {
         count: "exact",
         head: true, // only count returned

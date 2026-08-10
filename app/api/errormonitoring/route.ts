@@ -61,7 +61,7 @@ export async function GET(req: Request) {
 
     // 5️⃣ Base query — FORCE FAILED + LATEST FIRST
     let query = supabase
-      .from("document_registry")
+      .from("vw_document_registry")
       .select(
         `
       file_id,

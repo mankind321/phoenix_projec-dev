@@ -292,19 +292,52 @@ export function useRealtimeTest(
               }
 
               if (row.extraction_status === "FAILED") {
-                toast.error(
-                  <div
-                    onClick={() => toast.dismiss(toastId)}
-                    style={{ cursor: "pointer", width: "100%" }}
-                  >
-                    {`Extraction failed for "${row.file_name ?? "document"}". Please check the Error Document List on the Document page for more details.`}
-                  </div>,
-                  { id: toastId, duration: 30000 },
-                );
+                const userRole = session?.user?.role;
 
-                onExtractionFailedRef.current?.();
+                const canReview =
+                  userRole === "Admin" || userRole === "Manager";
 
-                window.dispatchEvent(new Event("error-document-added"));
+                if (canReview) {
+                  toast.warning(
+                    <div
+                      onClick={() => toast.dismiss(toastId)}
+                      style={{ cursor: "pointer", width: "100%" }}
+                    >
+                      {`Data extraction requires review for "${
+                        row.file_name ?? "document"
+                      }". Please check the For Review page.`}
+                    </div>,
+                    {
+                      id: toastId,
+                      duration: 30000,
+                    },
+                  );
+
+                  // Refresh For Review data/count
+                  onReviewReadyRef.current?.();
+
+                  window.dispatchEvent(new Event("review-count-updated"));
+                } else {
+                  // Non-review users should NOT be told to open For Review
+                  toast.error(
+                    <div
+                      onClick={() => toast.dismiss(toastId)}
+                      style={{ cursor: "pointer", width: "100%" }}
+                    >
+                      {`Extraction failed for "${
+                        row.file_name ?? "document"
+                      }". Please contact an administrator or manager for review.`}
+                    </div>,
+                    {
+                      id: toastId,
+                      duration: 30000,
+                    },
+                  );
+
+                  onExtractionFailedRef.current?.();
+
+                  window.dispatchEvent(new Event("error-document-added"));
+                }
               }
             },
           )

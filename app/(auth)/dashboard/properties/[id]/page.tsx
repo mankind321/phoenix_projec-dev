@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/exhaustive-deps */
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
@@ -34,6 +35,7 @@ import {
   Pencil,
   CircleX,
   Save,
+  Plus,
 } from "lucide-react";
 import { Can } from "@/app/components/can";
 
@@ -46,6 +48,17 @@ import {
 } from "@/components/ui/select";
 
 import { Badge } from "@/components/ui/badge";
+
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+
+import { Input } from "@/components/ui/input";
 
 interface PropertyData {
   property: any;
@@ -82,6 +95,40 @@ export default function PropertyViewPage({
   const [saving, setSaving] = useState(false);
 
   const [rentSchedule, setRentSchedule] = useState<any[]>([]);
+
+  const [rentScheduleDialogOpen, setRentScheduleDialogOpen] = useState(false);
+
+  const [editingRentSchedule, setEditingRentSchedule] = useState<any | null>(
+    null,
+  );
+
+  const [rentScheduleForm, setRentScheduleForm] = useState({
+    term: "",
+    start_date: "",
+    end_date: "",
+    monthly_rent: "",
+    annual_rent: "",
+    rent_increase_percent: "",
+    psf: "",
+    cap_rate: "",
+  });
+
+  const [originalRentSchedule, setOriginalRentSchedule] = useState<any[]>([]);
+
+  const [pendingRentScheduleChanges, setPendingRentScheduleChanges] = useState<{
+    added: any[];
+    updated: any[];
+    deleted: any[];
+  }>({
+    added: [],
+    updated: [],
+    deleted: [],
+  });
+
+  const pendingRentScheduleChangeCount =
+    pendingRentScheduleChanges.added.length +
+    pendingRentScheduleChanges.updated.length +
+    pendingRentScheduleChanges.deleted.length;
 
   const [selectedSchedules, setSelectedSchedules] = useState<
     Record<string, string>
@@ -167,27 +214,6 @@ export default function PropertyViewPage({
   }, [propertyId]);
 
   useEffect(() => {
-    if (!propertyId) return;
-
-    const fetchRentSchedule = async () => {
-      try {
-        const res = await fetch(
-          `/api/properties/rent-schedule?property_id=${propertyId}`,
-        );
-        const json = await res.json();
-
-        if (json.success) {
-          setRentSchedule(json.items ?? []);
-        }
-      } catch (err) {
-        console.error("Failed to load rent schedule:", err);
-      }
-    };
-
-    fetchRentSchedule();
-  }, [propertyId]);
-
-  useEffect(() => {
     if (!data) return;
 
     const defaults: Record<string, string> = {};
@@ -199,6 +225,12 @@ export default function PropertyViewPage({
     setSelectedSchedules(defaults);
   }, [data]);
 
+  useEffect(() => {
+    if (!propertyId) return;
+
+    fetchRentSchedules();
+  }, [propertyId]);
+
   function handleChange(field: string, value: any) {
     setForm((prev: any) => ({
       ...prev,
@@ -206,13 +238,258 @@ export default function PropertyViewPage({
     }));
   }
 
+  function handleRentScheduleChange(field: string, value: string) {
+    setRentScheduleForm((prev) => ({
+      ...prev,
+      [field]: value,
+    }));
+  }
+
+  function openAddRentSchedule() {
+    setEditingRentSchedule(null);
+
+    setRentScheduleForm({
+      term: "",
+      start_date: "",
+      end_date: "",
+      monthly_rent: "",
+      annual_rent: "",
+      rent_increase_percent: "",
+      psf: "",
+      cap_rate: "",
+    });
+
+    setRentScheduleDialogOpen(true);
+  }
+
+  function openEditRentSchedule(schedule: any) {
+    setEditingRentSchedule(schedule);
+
+    setRentScheduleForm({
+      term: schedule.term ?? "",
+      start_date: schedule.startDateRaw ?? schedule.startDate ?? "",
+      end_date: schedule.endDateRaw ?? schedule.endDate ?? "",
+      monthly_rent:
+        schedule.monthlyRent != null ? String(schedule.monthlyRent) : "",
+      annual_rent:
+        schedule.annualRent != null ? String(schedule.annualRent) : "",
+      rent_increase_percent:
+        schedule.rentIncreasePercent != null
+          ? String(schedule.rentIncreasePercent)
+          : "",
+      psf: schedule.psf != null ? String(schedule.psf) : "",
+      cap_rate: schedule.capRate != null ? String(schedule.capRate) : "",
+    });
+
+    setRentScheduleDialogOpen(true);
+  }
+
+  function handleSaveRentSchedule() {
+    const tempId =
+      editingRentSchedule?.id ??
+      `temp-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+
+    const isEdit = !!editingRentSchedule;
+
+    const isTemporary = String(editingRentSchedule?.id ?? "").startsWith(
+      "temp-",
+    );
+
+    const schedule = {
+      id: tempId,
+
+      term: rentScheduleForm.term || null,
+
+      startDate: rentScheduleForm.start_date || null,
+      startDateRaw: rentScheduleForm.start_date || null,
+
+      endDate: rentScheduleForm.end_date || null,
+      endDateRaw: rentScheduleForm.end_date || null,
+
+      monthlyRent: rentScheduleForm.monthly_rent
+        ? Number(rentScheduleForm.monthly_rent)
+        : null,
+
+      annualRent: rentScheduleForm.annual_rent
+        ? Number(rentScheduleForm.annual_rent)
+        : null,
+
+      rentIncreasePercent: rentScheduleForm.rent_increase_percent
+        ? Number(rentScheduleForm.rent_increase_percent)
+        : null,
+
+      psf: rentScheduleForm.psf ? Number(rentScheduleForm.psf) : null,
+
+      capRate: rentScheduleForm.cap_rate
+        ? Number(rentScheduleForm.cap_rate)
+        : null,
+
+      __state: !isEdit ? "added" : isTemporary ? "added" : "updated",
+    };
+
+    // =========================================================
+    // EDIT
+    // =========================================================
+    if (isEdit) {
+      setRentSchedule((prev) =>
+        prev.map((item) =>
+          item.id === editingRentSchedule.id
+            ? {
+                ...item,
+                ...schedule,
+              }
+            : item,
+        ),
+      );
+
+      // -------------------------------------------------------
+      // Existing DB record
+      // -------------------------------------------------------
+      if (!isTemporary) {
+        setPendingRentScheduleChanges((prev) => ({
+          ...prev,
+          updated: [
+            ...prev.updated.filter(
+              (item) => item.id !== editingRentSchedule.id,
+            ),
+            schedule,
+          ],
+        }));
+      }
+
+      // -------------------------------------------------------
+      // Newly-added local record
+      // -------------------------------------------------------
+      else {
+        setPendingRentScheduleChanges((prev) => ({
+          ...prev,
+          added: prev.added.map((item) =>
+            item.id === editingRentSchedule.id
+              ? {
+                  ...item,
+                  ...schedule,
+                  __state: "added",
+                }
+              : item,
+          ),
+        }));
+      }
+    }
+
+    // =========================================================
+    // ADD
+    // =========================================================
+    else {
+      setRentSchedule((prev) => [...prev, schedule]);
+
+      setPendingRentScheduleChanges((prev) => ({
+        ...prev,
+        added: [...prev.added, schedule],
+      }));
+    }
+
+    setRentScheduleDialogOpen(false);
+    setEditingRentSchedule(null);
+
+    toast.success(
+      isEdit
+        ? "Rent schedule modified. Click Save to apply changes."
+        : "Rent schedule added. Click Save to apply changes.",
+    );
+  }
+
+  function handleDeleteRentSchedule(schedule: any) {
+    const confirmed = window.confirm(
+      `Are you sure you want to delete the rent schedule for ${
+        schedule.startDate || schedule.startDateRaw || "this period"
+      }?`,
+    );
+
+    if (!confirmed) return;
+
+    const isTemporary = String(schedule.id).startsWith("temp-");
+
+    // Remove immediately from UI
+    setRentSchedule((prev) => prev.filter((item) => item.id !== schedule.id));
+
+    // =========================================================
+    // NEW LOCAL RECORD
+    // =========================================================
+    if (isTemporary) {
+      setPendingRentScheduleChanges((prev) => ({
+        ...prev,
+
+        added: prev.added.filter((item) => item.id !== schedule.id),
+      }));
+    }
+
+    // =========================================================
+    // EXISTING DATABASE RECORD
+    // =========================================================
+    else {
+      setPendingRentScheduleChanges((prev) => ({
+        ...prev,
+
+        // If previously modified, remove it from updated
+        updated: prev.updated.filter((item) => item.id !== schedule.id),
+
+        // Add to deleted list only once
+        deleted: [
+          ...prev.deleted.filter((item) => item.id !== schedule.id),
+          {
+            ...schedule,
+            __state: "deleted",
+          },
+        ],
+      }));
+    }
+
+    toast.success("Rent schedule marked for deletion.");
+  }
+
+  async function fetchRentSchedules() {
+    if (!propertyId) return;
+
+    try {
+      const res = await fetch(
+        `/api/properties/rent-schedule?property_id=${propertyId}`,
+      );
+
+      const json = await res.json();
+
+      if (json.success) {
+        const schedules = (json.items ?? []).map((x: any) => ({
+          ...x,
+        }));
+
+        setRentSchedule(schedules);
+
+        setOriginalRentSchedule(
+          schedules.map((x: any) => ({
+            ...x,
+          })),
+        );
+      } else {
+        console.error(json.message);
+      }
+    } catch (err) {
+      console.error("Failed to load rent schedule:", err);
+    }
+  }
+
   async function handleSave() {
     try {
       setSaving(true);
 
+      // ========================================
+      // 1. SAVE PROPERTY
+      // ========================================
+
       const res = await fetch(`/api/properties/${propertyId}`, {
-        method: "PUT", // ✅ MATCH BE
-        headers: { "Content-Type": "application/json" },
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({
           name: form.name ?? null,
           type: form.type ?? null,
@@ -221,7 +498,7 @@ export default function PropertyViewPage({
           address: form.address ?? null,
           city: form.city ?? null,
           state: form.state ?? null,
-          size: form.size ? Number(form.size) : null, // ✅ ADD
+          size: form.size ? Number(form.size) : null,
           price: form.price ? Number(form.price) : null,
           cap_rate: form.cap_rate ?? null,
           sale_date: form.sale_date || null,
@@ -232,14 +509,120 @@ export default function PropertyViewPage({
 
       const json = await res.json();
 
-      if (!json.success) {
+      if (!res.ok || !json.success) {
         toast.error(json.message || "Update failed");
         return;
       }
 
-      toast.success("Property Information updated successfully");
+      // ========================================
+      // 2. SAVE RENT SCHEDULE CHANGES
+      // ========================================
 
-      // ✅ Use BE response (source of truth)
+      const { added, updated, deleted } = pendingRentScheduleChanges;
+
+      const changes = [
+        // ======================================
+        // CREATE
+        // ======================================
+        ...added.map((schedule) => ({
+          action: "create",
+
+          // Frontend temporary ID only
+          id: schedule.id,
+
+          term: schedule.term,
+
+          startDate: schedule.startDate || null,
+          startDateRaw: schedule.startDateRaw || null,
+
+          endDate: schedule.endDate || null,
+          endDateRaw: schedule.endDateRaw || null,
+
+          monthlyRent: schedule.monthlyRent,
+          annualRent: schedule.annualRent,
+
+          rentIncreasePercent: schedule.rentIncreasePercent,
+
+          rentIncreases: schedule.rentIncreases || null,
+
+          psf: schedule.psf,
+          capRate: schedule.capRate,
+        })),
+
+        // ======================================
+        // UPDATE
+        // ======================================
+        ...updated.map((schedule) => ({
+          action: "update",
+
+          // Actual database rent_id
+          rent_id: schedule.id,
+
+          term: schedule.term,
+
+          startDate: schedule.startDate || null,
+          startDateRaw: schedule.startDateRaw || null,
+
+          endDate: schedule.endDate || null,
+          endDateRaw: schedule.endDateRaw || null,
+
+          monthlyRent: schedule.monthlyRent,
+          annualRent: schedule.annualRent,
+
+          rentIncreasePercent: schedule.rentIncreasePercent,
+
+          rentIncreases: schedule.rentIncreases || null,
+
+          psf: schedule.psf,
+          capRate: schedule.capRate,
+        })),
+
+        // ======================================
+        // DELETE
+        // ======================================
+        ...deleted.map((schedule) => ({
+          action: "delete",
+
+          // Actual database rent_id
+          rent_id: schedule.id,
+        })),
+      ];
+
+      // ========================================
+      // ONLY CALL API IF THERE ARE CHANGES
+      // ========================================
+
+      if (changes.length > 0) {
+        const scheduleRes = await fetch(`/api/properties/rent-schedule`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            property_id: propertyId,
+            changes,
+          }),
+        });
+
+        const scheduleJson = await scheduleRes.json();
+
+        if (!scheduleRes.ok || !scheduleJson.success) {
+          throw new Error(
+            scheduleJson.message || "Failed to save rent schedule changes.",
+          );
+        }
+      }
+
+      // ========================================
+      // 3. REFRESH RENT SCHEDULE
+      // ========================================
+
+      await fetchRentSchedules();
+
+      // ========================================
+      // 4. UPDATE PROPERTY STATE
+      // ========================================
+
       setData((prev: any) => ({
         ...prev,
         property: json.data ?? {
@@ -248,13 +631,33 @@ export default function PropertyViewPage({
         },
       }));
 
-      // ✅ Sync form with DB response
       setForm(json.data ?? form);
 
+      // ========================================
+      // 5. CLEAR PENDING CHANGES
+      // ========================================
+
+      setPendingRentScheduleChanges({
+        added: [],
+        updated: [],
+        deleted: [],
+      });
+
+      setOriginalRentSchedule([]);
+
+      // ========================================
+      // 6. EXIT EDIT MODE
+      // ========================================
+
       setIsEditing(false);
-    } catch (err) {
-      console.error(err);
-      toast.error("Error saving property");
+
+      toast.success(
+        "Property information and rent schedule updated successfully.",
+      );
+    } catch (err: any) {
+      console.error("Failed to save property:", err);
+
+      toast.error(err.message || "Error saving property information.");
     } finally {
       setSaving(false);
     }
@@ -262,6 +665,11 @@ export default function PropertyViewPage({
 
   function handleCancel() {
     if (!data) return;
+
+    // =====================================================
+    // RESTORE PROPERTY
+    // =====================================================
+
     setForm({
       name: data.property.name,
       type: data.property.type,
@@ -270,13 +678,37 @@ export default function PropertyViewPage({
       address: data.property.address,
       city: data.property.city,
       state: data.property.state,
-      size: data.property.size, // ✅ ADD
+      size: data.property.size,
       price: data.property.price,
       cap_rate: data.property.cap_rate,
       sale_date: data.property.sale_date,
       comments: data.property.comments,
       tenancytype: data.property.tenancytype,
     });
+
+    // =====================================================
+    // RESTORE RENT SCHEDULE
+    // =====================================================
+
+    setRentSchedule(
+      originalRentSchedule.map((schedule) => ({
+        ...schedule,
+      })),
+    );
+
+    // =====================================================
+    // CLEAR PENDING CHANGES
+    // =====================================================
+
+    setPendingRentScheduleChanges({
+      added: [],
+      updated: [],
+      deleted: [],
+    });
+
+    setRentScheduleDialogOpen(false);
+    setEditingRentSchedule(null);
+
     setIsEditing(false);
   }
 
@@ -394,10 +826,24 @@ export default function PropertyViewPage({
         <Can role={["Admin", "Manager"]}>
           {!isEditing ? (
             <Button
-              onClick={() => setIsEditing(true)}
+              onClick={() => {
+                setIsEditing(true);
+
+                // Snapshot current rent schedule
+                setOriginalRentSchedule(
+                  rentSchedule.map((schedule) => ({ ...schedule })),
+                );
+
+                // Clear previous pending changes
+                setPendingRentScheduleChanges({
+                  added: [],
+                  updated: [],
+                  deleted: [],
+                });
+              }}
               className="bg-blue-600 hover:bg-blue-700"
             >
-              <Pencil />
+              <Pencil className="w-4 h-4" />
               Update
             </Button>
           ) : (
@@ -405,9 +851,9 @@ export default function PropertyViewPage({
               <Button
                 onClick={handleSave}
                 disabled={saving}
-                className="bg-green-600 hover:bg-green-700 text-white"
+                className="bg-blue-600 hover:bg-blue-700"
               >
-                <Save />
+                <Save className="w-4 h-4 mr-1" />
                 {saving ? "Saving..." : "Save"}
               </Button>
 
@@ -850,9 +1296,40 @@ export default function PropertyViewPage({
       </InfoSection>
 
       {/* RENT SCHEDULE */}
-      <InfoSection icon={<DollarSign />} title="Rent Schedule">
+      <InfoSection
+        icon={<DollarSign />}
+        title={
+          <div className="flex items-center gap-2">
+            <span>Rent Schedule</span>
+
+            {isEditing && pendingRentScheduleChangeCount > 0 && (
+              <span className="rounded-full bg-amber-100 px-2 py-1 text-xs text-amber-700">
+                {pendingRentScheduleChangeCount} Pending Change
+                {pendingRentScheduleChangeCount > 1 ? "s" : ""}
+              </span>
+            )}
+          </div>
+        }
+      >
+        <div className="flex justify-end mb-6">
+          {isEditing && (
+            <div className="flex justify-end">
+              <Button
+                className="bg-blue-600 hover:bg-blue-700 flex items-center gap-2"
+                onClick={openAddRentSchedule}
+              >
+                <Plus className="w-4 h-4" />
+                Add Rent Schedule
+              </Button>
+            </div>
+          )}
+        </div>
         {rentSchedule.length === 0 ? (
-          <p className="text-gray-500">No rent schedule available.</p>
+          <div className="flex items-center justify-center py-10">
+            <p className="text-gray-500 text-center">
+              No rent schedule available.
+            </p>
+          </div>
         ) : (
           (() => {
             // ✅ Column visibility (include RAW fallback fields)
@@ -902,6 +1379,14 @@ export default function PropertyViewPage({
                     {columnVisibility.capRate && (
                       <TableHead>Cap Rate</TableHead>
                     )}
+
+                    {isEditing && (
+                      <>
+                        <TableHead>Status</TableHead>
+
+                        <TableHead className="text-center">Action</TableHead>
+                      </>
+                    )}
                   </TableRow>
                 </TableHeader>
 
@@ -911,8 +1396,25 @@ export default function PropertyViewPage({
 
                     const endDateValue = r.endDate ?? r.endDateRaw ?? "-";
 
+                    const isAdded = pendingRentScheduleChanges.added.some(
+                      (x) => x.id === r.id,
+                    );
+
+                    const isUpdated = pendingRentScheduleChanges.updated.some(
+                      (x) => x.id === r.id,
+                    );
+
                     return (
-                      <TableRow key={r.id}>
+                      <TableRow
+                        key={r.id}
+                        className={
+                          isAdded
+                            ? "bg-green-50"
+                            : isUpdated
+                              ? "bg-yellow-50"
+                              : ""
+                        }
+                      >
                         <TableCell>{r.term || "-"}</TableCell>
 
                         {columnVisibility.startDate && (
@@ -952,6 +1454,48 @@ export default function PropertyViewPage({
                         {columnVisibility.capRate && (
                           <TableCell>
                             {r.capRate ? `${r.capRate}%` : "-"}
+                          </TableCell>
+                        )}
+
+                        {/* STATUS */}
+                        {isEditing && (
+                          <TableCell>
+                            {isAdded ? (
+                              <span className="rounded bg-green-100 px-2 py-1 text-xs font-medium text-green-700">
+                                Added
+                              </span>
+                            ) : isUpdated ? (
+                              <span className="rounded bg-yellow-100 px-2 py-1 text-xs font-medium text-yellow-700">
+                                Modified
+                              </span>
+                            ) : (
+                              "—"
+                            )}
+                          </TableCell>
+                        )}
+
+                        {/* ACTION */}
+                        {isEditing && (
+                          <TableCell>
+                            <div className="flex justify-center gap-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => openEditRentSchedule(r)}
+                              >
+                                <Pencil className="w-4 h-4" />
+                                Edit
+                              </Button>
+
+                              <Button
+                                size="sm"
+                                variant="destructive"
+                                onClick={() => handleDeleteRentSchedule(r)}
+                              >
+                                <CircleX className="w-4 h-4" />
+                                Delete
+                              </Button>
+                            </div>
                           </TableCell>
                         )}
                       </TableRow>
@@ -1062,6 +1606,173 @@ export default function PropertyViewPage({
         <ArrowLeft className="w-4 h-4" />
         Back
       </Button>
+
+      <Dialog
+        open={isEditing && rentScheduleDialogOpen}
+        onOpenChange={(open) => {
+          if (isEditing) {
+            setRentScheduleDialogOpen(open);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-[700px]">
+          <DialogHeader>
+            <DialogTitle>
+              {editingRentSchedule ? "Edit Rent Schedule" : "Add Rent Schedule"}
+            </DialogTitle>
+
+            <DialogDescription>
+              {editingRentSchedule
+                ? "Update the rental terms for this schedule."
+                : "Add a new rental period and pricing schedule."}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-4">
+            {/* TERM */}
+            <div className="space-y-2">
+              <Label>Term</Label>
+
+              <Input
+                value={rentScheduleForm.term}
+                onChange={(e) =>
+                  handleRentScheduleChange("term", e.target.value)
+                }
+                placeholder="e.g. Year 1"
+              />
+            </div>
+
+            {/* START DATE */}
+            <div className="space-y-2">
+              <Label>Start Date</Label>
+
+              <Input
+                type="date"
+                value={rentScheduleForm.start_date}
+                onChange={(e) =>
+                  handleRentScheduleChange("start_date", e.target.value)
+                }
+              />
+            </div>
+
+            {/* END DATE */}
+            <div className="space-y-2">
+              <Label>End Date</Label>
+
+              <Input
+                type="date"
+                value={rentScheduleForm.end_date}
+                onChange={(e) =>
+                  handleRentScheduleChange("end_date", e.target.value)
+                }
+              />
+            </div>
+
+            {/* MONTHLY RENT */}
+            <div className="space-y-2">
+              <Label>Monthly Rent</Label>
+
+              <Input
+                type="number"
+                step="0.01"
+                min="0"
+                value={rentScheduleForm.monthly_rent}
+                onChange={(e) =>
+                  handleRentScheduleChange("monthly_rent", e.target.value)
+                }
+                placeholder="0.00"
+              />
+            </div>
+
+            {/* ANNUAL RENT */}
+            <div className="space-y-2">
+              <Label>Annual Rent</Label>
+
+              <Input
+                type="number"
+                step="0.01"
+                min="0"
+                value={rentScheduleForm.annual_rent}
+                onChange={(e) =>
+                  handleRentScheduleChange("annual_rent", e.target.value)
+                }
+                placeholder="0.00"
+              />
+            </div>
+
+            {/* RENT INCREASE */}
+            <div className="space-y-2">
+              <Label>Rent Increase %</Label>
+
+              <Input
+                type="number"
+                step="0.01"
+                min="0"
+                value={rentScheduleForm.rent_increase_percent}
+                onChange={(e) =>
+                  handleRentScheduleChange(
+                    "rent_increase_percent",
+                    e.target.value,
+                  )
+                }
+                placeholder="0.00"
+              />
+            </div>
+
+            {/* PSF */}
+            <div className="space-y-2">
+              <Label>PSF</Label>
+
+              <Input
+                type="number"
+                step="0.01"
+                min="0"
+                value={rentScheduleForm.psf}
+                onChange={(e) =>
+                  handleRentScheduleChange("psf", e.target.value)
+                }
+                placeholder="0.00"
+              />
+            </div>
+
+            {/* CAP RATE */}
+            <div className="space-y-2">
+              <Label>Cap Rate %</Label>
+
+              <Input
+                type="number"
+                step="0.01"
+                min="0"
+                value={rentScheduleForm.cap_rate}
+                onChange={(e) =>
+                  handleRentScheduleChange("cap_rate", e.target.value)
+                }
+                placeholder="0.00"
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setRentScheduleDialogOpen(false);
+                setEditingRentSchedule(null);
+              }}
+            >
+              Cancel
+            </Button>
+
+            <Button
+              onClick={handleSaveRentSchedule}
+              disabled={!rentScheduleForm.start_date}
+              className="bg-blue-600 hover:bg-blue-700"
+            >
+              {editingRentSchedule ? "Update" : "Add"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -1075,17 +1786,16 @@ function InfoSection({
   icon,
   children,
 }: {
-  title: string;
+  title: React.ReactNode;
   icon: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
     <div className="space-y-3">
-      <h3 className="text-xl font-semibold flex items-center gap-2 text-gray-800">
+      <h3 className="text-xl font-semibold text-gray-800 flex items-center gap-2">
         <span className="text-blue-600">{icon}</span>
         {title}
       </h3>
-
       <div className="p-5 border rounded-xl bg-white shadow-sm">{children}</div>
     </div>
   );

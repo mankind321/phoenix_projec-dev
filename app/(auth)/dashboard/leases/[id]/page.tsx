@@ -3,7 +3,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import {
@@ -59,7 +59,11 @@ export default function LeaseViewPage({
   params: Promise<{ id: string }>;
 }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+
   const { id: leaseId } = React.use(params);
+
+  const fromReview = searchParams.get("fromReview") === "true";
 
   const [data, setData] = useState<LeaseData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -112,27 +116,51 @@ export default function LeaseViewPage({
 
     const fetchLease = async () => {
       try {
-        const leaseRes = await fetch(`/api/lease/${leaseId}`);
+        const query = fromReview ? "?fromReview=true" : "";
+
+        const leaseRes = await fetch(`/api/lease/${leaseId}${query}`);
 
         const leaseJson = await leaseRes.json();
+
+        if (!leaseRes.ok || !leaseJson.success) {
+          throw new Error(
+            leaseJson.message || "Failed to load lease information.",
+          );
+        }
+
         setData(leaseJson.data);
 
         await loadLeaseSchedule();
       } catch (error) {
         console.error("Error loading lease:", error);
+
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : "Failed to load lease information.",
+        );
+
+        setData(null);
       } finally {
         setLoading(false);
       }
     };
 
     fetchLease();
-  }, [leaseId]);
+  }, [leaseId, fromReview]);
 
   useEffect(() => {
     if (data?.lease) {
       setDraftLease({ ...data.lease });
     }
   }, [data]);
+
+  useEffect(() => {
+    if (fromReview && data?.lease) {
+      setDraftLease({ ...data.lease });
+      setIsEditing(true);
+    }
+  }, [fromReview, data]);
 
   // ---------------- LOAD PROPERTIES (EDIT MODE) ----------------
   useEffect(() => {
@@ -163,6 +191,70 @@ export default function LeaseViewPage({
   };
 
   const handleCancel = () => {
+    setDraftLease({ ...data?.lease });
+
+    setLeaseSchedules(originalLeaseSchedules.map((x: any) => ({ ...x })));
+
+    setLeaseScheduleChanges({
+      added: [],
+      updated: [],
+      deleted: [],
+    });
+
+    setShowAddLeaseDialog(false);
+    setShowEditLeaseDialog(false);
+    setShowDeleteLeaseDialog(false);
+
+    setEditingLeaseDate(null);
+    setLeaseScheduleToDelete(null);
+
+    setIsEditing(false);
+  };
+
+  const handleCancelReview = async () => {
+    // =========================================================
+    // PROPERTY REVIEW → ADD TENANT
+    // Cancel means DELETE the newly-created lease
+    // =========================================================
+    if (fromReview) {
+      if (!leaseId) {
+        router.back();
+        return;
+      }
+
+      try {
+        setSaving(true);
+
+        const res = await fetch(`/api/lease/${leaseId}`, {
+          method: "DELETE",
+        });
+
+        const json = await res.json();
+
+        if (!res.ok || !json.success) {
+          toast.error(json.message || "Failed to cancel tenant.");
+          return;
+        }
+
+        toast.info("Tenant creation cancelled.");
+
+        // Return to Property Review
+        router.back();
+      } catch (error) {
+        console.error("Failed to cancel tenant:", error);
+        toast.error("Failed to cancel tenant.");
+      } finally {
+        setSaving(false);
+      }
+
+      return;
+    }
+
+    // =========================================================
+    // NORMAL EDIT MODE
+    // Existing cancel behavior
+    // =========================================================
+
     setDraftLease({ ...data?.lease });
 
     setLeaseSchedules(originalLeaseSchedules.map((x: any) => ({ ...x })));
@@ -274,6 +366,7 @@ export default function LeaseViewPage({
     setLeaseScheduleToDelete(null);
     setShowDeleteLeaseDialog(false);
   };
+
   const handleSave = async () => {
     if (saving) return;
 
@@ -282,10 +375,13 @@ export default function LeaseViewPage({
 
       const dirtyPayload = buildDirtyPayload(data!.lease, draftLease);
 
-      // Normalize comments
+      // ---------------------------------------------------
+      // NORMALIZE COMMENTS
+      // ---------------------------------------------------
       const normalizedDraftComments = normalizeNullableText(
         draftLease.comments,
       );
+
       const normalizedOriginalComments = normalizeNullableText(
         data!.lease.comments,
       );
@@ -294,13 +390,16 @@ export default function LeaseViewPage({
         dirtyPayload.comments = normalizedDraftComments;
       }
 
-      // Normalize numeric fields
+      // ---------------------------------------------------
+      // NORMALIZE NUMERIC FIELDS
+      // ---------------------------------------------------
       const numericFields = [
         "price",
         "annual_rent",
         "rent_psf",
         "pass_tmru",
         "noi",
+        "size",
       ];
 
       numericFields.forEach((field) => {
@@ -321,7 +420,15 @@ export default function LeaseViewPage({
         leaseScheduleChanges.updated.length > 0 ||
         leaseScheduleChanges.deleted.length > 0;
 
-      if (!hasLeaseChanges && !hasScheduleChanges) {
+      // ---------------------------------------------------
+      // NORMAL MODE
+      // ---------------------------------------------------
+      // In normal edit mode, don't save if nothing changed.
+      //
+      // In Review mode, ACCEPT is still valid even when
+      // the reviewer didn't modify anything.
+      //
+      if (!fromReview && !hasLeaseChanges && !hasScheduleChanges) {
         toast.info("No changes to save");
         return;
       }
@@ -448,9 +555,24 @@ export default function LeaseViewPage({
 
       setIsEditing(false);
 
+      // ---------------------------------------------------
+      // REVIEW MODE
+      // ---------------------------------------------------
+      if (fromReview) {
+        toast.success("Tenant lease accepted successfully.");
+
+        // Return to Property Review page
+        router.back();
+
+        return;
+      }
+
+      // ---------------------------------------------------
+      // NORMAL EDIT MODE
+      // ---------------------------------------------------
       toast.success("Lease updated successfully");
     } catch (err) {
-      console.error("PUT failed", err);
+      console.error("Lease save failed", err);
       toast.error("Unexpected error while saving");
     } finally {
       setSaving(false);
@@ -499,7 +621,11 @@ export default function LeaseViewPage({
       added: [...prev.added, newSchedule],
     }));
 
-    toast.success("Lease schedule added. Click Save to apply changes.");
+    toast.success(
+      fromReview
+        ? "Lease schedule added. Click Apply to apply changes."
+        : "Lease schedule added. Click Save to apply changes.",
+    );
 
     setLeaseDateForm({
       start_date: "",
@@ -649,14 +775,16 @@ export default function LeaseViewPage({
                 className="bg-green-600 hover:bg-green-700 disabled:opacity-50"
               >
                 <Save className="w-4 h-4" />
-                {saving ? "Saving..." : "Save"}
+                {saving ? "Saving..." : fromReview ? "Accept" : "Save"}
               </Button>
+
               <Button
-                onClick={handleCancel}
+                onClick={fromReview ? handleCancelReview : handleCancel}
+                disabled={saving}
                 className="bg-red-600 hover:bg-red-700 text-white flex items-center gap-2 px-4"
               >
                 <XCircle className="w-4 h-4" />
-                Cancel
+                {fromReview ? "Cancel Tenant" : "Cancel"}
               </Button>
             </>
           )}
@@ -727,14 +855,12 @@ export default function LeaseViewPage({
 
             {isEditing ? (
               <select
-                value={
-                  properties.find(
-                    (p) => p.property_name === draftLease.property_name,
-                  )?.id || ""
-                }
+                value={draftLease.property_id ?? ""}
                 onChange={(e) => handlePropertyChange(e.target.value)}
-                disabled={loadingProperties}
-                className="w-full border rounded-md px-3 py-2 text-sm"
+                disabled={loadingProperties || fromReview}
+                className={`w-full border rounded-md px-3 py-2 text-sm ${
+                  fromReview ? "bg-gray-100 cursor-not-allowed" : ""
+                }`}
               >
                 <option value="">Select Property</option>
                 {properties.map((p) => (
@@ -1136,14 +1262,16 @@ export default function LeaseViewPage({
         </Grid2>
       </InfoSection>
 
-      <Button
-        variant="outline"
-        className="flex items-center gap-2"
-        onClick={() => router.back()}
-      >
-        <ArrowLeft className="w-4 h-4" />
-        Back
-      </Button>
+      {!fromReview && (
+        <Button
+          variant="outline"
+          className="flex items-center gap-2"
+          onClick={() => router.back()}
+        >
+          <ArrowLeft className="w-4 h-4" />
+          Back
+        </Button>
+      )}
 
       <Dialog
         open={showAddLeaseDialog || showEditLeaseDialog}

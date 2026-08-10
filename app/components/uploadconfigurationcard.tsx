@@ -415,7 +415,7 @@ export default function DocumentUploadSection() {
           </TabsTrigger>
 
           <TabsTrigger value="errorList">
-            Error Document List
+            Rejected Document List
             {errorCount > 0 && (
               <span className="ml-2 px-2 py-0.5 text-xs font-semibold bg-red-500 text-white rounded-full">
                 {errorCount}
