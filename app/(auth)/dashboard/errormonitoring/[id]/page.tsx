@@ -354,7 +354,7 @@ function PageTitle() {
   return (
     <h1 className="text-3xl font-semibold text-center flex justify-center items-center gap-2">
       <AlertTriangle className="w-7 h-7 text-red-600" />
-      Error Document Details
+      Rejected Document Details
     </h1>
   );
 }
