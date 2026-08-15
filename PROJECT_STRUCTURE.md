@@ -1,402 +1,416 @@
-| Type | Path |
-|------|------|
-| File | .env.local |
-| File | .gitignore |
-| Folder | .swc |
-| Folder | .swc\plugins |
-| Folder | .swc\plugins\windows_x86_64_20.0.0 |
-| Folder | .vscode |
-| File | .vscode\settings.json |
-| Folder | app |
-| Folder | app\(auth) |
-| Folder | app\(auth)\dashboard |
-| Folder | app\(auth)\dashboard\audit-trail |
-| File | app\(auth)\dashboard\audit-trail\page.tsx |
-| Folder | app\(auth)\dashboard\contact |
-| Folder | app\(auth)\dashboard\contact\add |
-| File | app\(auth)\dashboard\contact\add\page.tsx |
-| Folder | app\(auth)\dashboard\contact\edit |
-| File | app\(auth)\dashboard\contact\edit\page.tsx |
-| File | app\(auth)\dashboard\contact\page.tsx |
-| Folder | app\(auth)\dashboard\documents |
-| File | app\(auth)\dashboard\documents\page.tsx |
-| Folder | app\(auth)\dashboard\errormonitoring |
-| File | app\(auth)\dashboard\errormonitoring\page.tsx |
-| Folder | app\(auth)\dashboard\errormonitoring\[id] |
-| File | app\(auth)\dashboard\errormonitoring\[id]\page.tsx |
-| Folder | app\(auth)\dashboard\leases |
-| File | app\(auth)\dashboard\leases\page.tsx |
-| Folder | app\(auth)\dashboard\leases\[id] |
-| File | app\(auth)\dashboard\leases\[id]\page.tsx |
-| Folder | app\(auth)\dashboard\main |
-| File | app\(auth)\dashboard\main\page.tsx |
-| Folder | app\(auth)\dashboard\owner-contact |
-| File | app\(auth)\dashboard\owner-contact\page.tsx |
-| Folder | app\(auth)\dashboard\properties |
-| File | app\(auth)\dashboard\properties\page.tsx |
-| Folder | app\(auth)\dashboard\properties\[id] |
-| File | app\(auth)\dashboard\properties\[id]\page.tsx |
-| Folder | app\(auth)\dashboard\review |
-| File | app\(auth)\dashboard\review\page.tsx |
-| Folder | app\(auth)\dashboard\review\[id] |
-| File | app\(auth)\dashboard\review\[id]\page.tsx |
-| Folder | app\(auth)\dashboard\users |
-| Folder | app\(auth)\dashboard\users\add |
-| File | app\(auth)\dashboard\users\add\page.tsx |
-| Folder | app\(auth)\dashboard\users\edit |
-| File | app\(auth)\dashboard\users\edit\page.tsx |
-| File | app\(auth)\dashboard\users\page.tsx |
-| Folder | app\(auth)\dashboard\users\profile |
-| File | app\(auth)\dashboard\users\profile\page.tsx |
-| File | app\(auth)\layout.tsx |
-| Folder | app\api |
-| Folder | app\api\aisearch |
-| File | app\api\aisearch\route.ts |
-| Folder | app\api\audit-trail |
-| Folder | app\api\audit-trail\export |
-| File | app\api\audit-trail\export\route.ts |
-| File | app\api\audit-trail\route.ts |
-| Folder | app\api\auth |
-| Folder | app\api\auth\update-status-offline |
-| File | app\api\auth\update-status-offline\route.ts |
-| Folder | app\api\auth\update-status-online |
-| File | app\api\auth\update-status-online\route.ts |
-| Folder | app\api\auth\[...nextauth] |
-| File | app\api\auth\[...nextauth]\route.ts |
-| Folder | app\api\check-duplicate |
-| Folder | app\api\check-duplicate\lease |
-| File | app\api\check-duplicate\lease\route.ts |
-| Folder | app\api\check-duplicate\property |
-| File | app\api\check-duplicate\property\route.ts |
-| Folder | app\api\contacts |
-| Folder | app\api\contacts\count |
-| File | app\api\contacts\count\route.ts |
-| Folder | app\api\contacts\lease_list |
-| File | app\api\contacts\lease_list\route.ts |
-| Folder | app\api\contacts\property_list |
-| File | app\api\contacts\property_list\route.ts |
-| File | app\api\contacts\route.ts |
-| Folder | app\api\contacts\[id] |
-| File | app\api\contacts\[id]\route.ts |
-| Folder | app\api\dashboard |
-| Folder | app\api\dashboard\document-status |
-| File | app\api\dashboard\document-status\route.ts |
-| Folder | app\api\dashboard\document-type |
-| File | app\api\dashboard\document-type\route.ts |
-| Folder | app\api\dashboard\export |
-| File | app\api\dashboard\export\route.ts |
-| Folder | app\api\dashboard\income-property |
-| File | app\api\dashboard\income-property\route.ts |
-| Folder | app\api\dashboard\income-trend |
-| File | app\api\dashboard\income-trend\route.ts |
-| Folder | app\api\dashboard\kpi |
-| File | app\api\dashboard\kpi\route.ts |
-| Folder | app\api\dashboard\lease-expiration |
-| File | app\api\dashboard\lease-expiration\route.ts |
-| Folder | app\api\dashboard\lease-status |
-| File | app\api\dashboard\lease-status\route.ts |
-| Folder | app\api\dashboard\properties-city |
-| File | app\api\dashboard\properties-city\route.ts |
-| Folder | app\api\dashboard\properties-state |
-| File | app\api\dashboard\properties-state\route.ts |
-| File | app\api\dashboard\route.ts |
-| Folder | app\api\dashboard\_utils |
-| File | app\api\dashboard\_utils\supabaseRls.ts |
-| File | app\api\dashboard\_utils\_template.ts |
-| File | app\api\dashboard\_utils.ts |
-| Folder | app\api\debug |
-| Folder | app\api\debug\env |
-| File | app\api\debug\env\route.ts |
-| Folder | app\api\debug\jwt |
-| File | app\api\debug\jwt\route.ts |
-| Folder | app\api\debug\models |
-| File | app\api\debug\models\route.ts |
-| Folder | app\api\document |
-| Folder | app\api\document\count |
-| File | app\api\document\count\route.ts |
-| File | app\api\document\route.ts |
-| Folder | app\api\embed-all |
-| File | app\api\embed-all\route.ts |
-| Folder | app\api\errormonitoring |
-| Folder | app\api\errormonitoring\count |
-| File | app\api\errormonitoring\count\route.ts |
-| File | app\api\errormonitoring\route.ts |
-| Folder | app\api\errormonitoring\[id] |
-| File | app\api\errormonitoring\[id]\route.ts |
-| Folder | app\api\force-logout |
-| File | app\api\force-logout\route.ts |
-| Folder | app\api\gcp |
-| Folder | app\api\gcp\archived-document |
-| Folder | app\api\gcp\archived-document\[id] |
-| File | app\api\gcp\archived-document\[id]\route.ts |
-| Folder | app\api\gcp\download |
-| File | app\api\gcp\download\route.ts |
-| Folder | app\api\gcp\getSignedUrl |
-| File | app\api\gcp\getSignedUrl\route.ts |
-| Folder | app\api\lease |
-| Folder | app\api\lease\active |
-| File | app\api\lease\active\route.ts |
-| Folder | app\api\lease\count |
-| File | app\api\lease\count\route.ts |
-| Folder | app\api\lease\count-status |
-| File | app\api\lease\count-status\route.ts |
-| File | app\api\lease\route.ts |
-| Folder | app\api\lease\[id] |
-| File | app\api\lease\[id]\route.ts |
-| Folder | app\api\owner-contacts |
-| File | app\api\owner-contacts\route.ts |
-| Folder | app\api\properties |
-| Folder | app\api\properties\count |
-| File | app\api\properties\count\route.ts |
-| Folder | app\api\properties\list |
-| File | app\api\properties\list\route.ts |
-| Folder | app\api\properties\list-2 |
-| File | app\api\properties\list-2\route.ts |
-| Folder | app\api\properties\rent-schedule |
-| File | app\api\properties\rent-schedule\route.ts |
-| File | app\api\properties\route.ts |
-| Folder | app\api\properties\status |
-| File | app\api\properties\status\route.ts |
-| Folder | app\api\properties\type |
-| File | app\api\properties\type\route.ts |
-| Folder | app\api\properties\update-status |
-| File | app\api\properties\update-status\route.ts |
-| Folder | app\api\properties\[id] |
-| File | app\api\properties\[id]\route.ts |
-| Folder | app\api\realtime-token |
-| File | app\api\realtime-token\route.ts |
-| Folder | app\api\review |
-| Folder | app\api\review\action |
-| File | app\api\review\action\route.ts |
-| Folder | app\api\review\count |
-| File | app\api\review\count\route.ts |
-| File | app\api\review\route.ts |
-| Folder | app\api\test |
-| File | app\api\test\route.ts |
-| Folder | app\api\test\vertex-test |
-| File | app\api\test\vertex-test\route.ts |
-| Folder | app\api\upload |
-| Folder | app\api\upload\document |
-| Folder | app\api\upload\document\confirm |
-| File | app\api\upload\document\confirm\route.ts |
-| File | app\api\upload\document\route.ts |
-| Folder | app\api\upload\precheck |
-| File | app\api\upload\precheck\route.ts |
-| Folder | app\api\upload\profile |
-| File | app\api\upload\profile\route.ts |
-| Folder | app\api\users |
-| Folder | app\api\users\check-username |
-| File | app\api\users\check-username\route.ts |
-| Folder | app\api\users\count |
-| File | app\api\users\count\route.ts |
-| Folder | app\api\users\force-logout |
-| File | app\api\users\force-logout\route.ts |
-| Folder | app\api\users\list |
-| File | app\api\users\list\route.ts |
-| Folder | app\api\users\managers |
-| File | app\api\users\managers\route.ts |
-| Folder | app\api\users\profile |
-| Folder | app\api\users\profile\change-password |
-| File | app\api\users\profile\change-password\route.ts |
-| File | app\api\users\profile\route.ts |
-| Folder | app\api\users\profile\update |
-| File | app\api\users\profile\update\route.ts |
-| File | app\api\users\route.ts |
-| Folder | app\api\users\[id] |
-| Folder | app\api\users\[id]\force-logout |
-| File | app\api\users\[id]\force-logout\route.ts |
-| File | app\api\users\[id]\route.ts |
-| Folder | app\components |
-| File | app\components\actionbuttoncard.tsx |
-| File | app\components\activeleasescard.tsx |
-| File | app\components\aisearchcard.tsx |
-| File | app\components\autologout.tsx |
-| File | app\components\can.tsx |
-| File | app\components\changePasswordModal.tsx |
-| File | app\components\contactlistcard.tsx |
-| File | app\components\contactregistration.tsx |
-| File | app\components\dashboardclient.tsx |
-| Folder | app\components\dashboards |
-| File | app\components\dashboards\documentsbytypechart.tsx |
-| File | app\components\dashboards\documentstatuschart.tsx |
-| File | app\components\dashboards\incomebypropertytable.tsx |
-| File | app\components\dashboards\incometrendchart.tsx |
-| File | app\components\dashboards\kpigroup.tsx |
-| File | app\components\dashboards\leaseexpirationchart.tsx |
-| File | app\components\dashboards\leasestatuschart.tsx |
-| File | app\components\dashboards\propertiesbycitychart.tsx |
-| File | app\components\dashboards\propertiesbystatechart.tsx |
-| Folder | app\components\dashboards\_utils |
-| File | app\components\dashboards\_utils\useDashboardFetch.ts |
-| File | app\components\dashboards\_utils\useDashboardFilters.ts |
-| File | app\components\documentlist.tsx |
-| File | app\components\documentuploadcard.tsx |
-| File | app\components\errormonitoringcard.tsx |
-| File | app\components\header.tsx |
-| File | app\components\headerAdmin.tsx |
-| File | app\components\headerManager.tsx |
-| File | app\components\leaselistcard.tsx |
-| File | app\components\loginpage.tsx |
-| File | app\components\ownercontactlistcard.tsx |
-| File | app\components\propertycard.tsx |
-| File | app\components\propertyimagecarousel.tsx |
-| File | app\components\reviewcard.tsx |
-| File | app\components\systemlogsactivitiescard.tsx |
-| File | app\components\traditionalsearchcard.tsx |
-| File | app\components\uploadconfigurationcard.tsx |
-| File | app\components\userregistrion.tsx |
-| File | app\components\usertable.tsx |
-| File | app\favicon.ico |
-| File | app\globals.css |
-| File | app\layout.tsx |
-| Folder | app\login |
-| File | app\login\page.tsx |
-| File | app\page.tsx |
-| File | app\provider.tsx |
-| File | app\session-provider-wrapper.tsx |
-| Folder | app\store |
-| File | app\store\propertyStore.tsx |
-| Folder | components |
-| Folder | components\ui |
-| File | components\ui\avatar.tsx |
-| File | components\ui\badge.tsx |
-| File | components\ui\button.tsx |
-| File | components\ui\card.tsx |
-| File | components\ui\carousel.tsx |
-| File | components\ui\command.tsx |
-| File | components\ui\dialog.tsx |
-| File | components\ui\dropdown-menu.tsx |
-| File | components\ui\input.tsx |
-| File | components\ui\label.tsx |
-| File | components\ui\pagination.tsx |
-| File | components\ui\popover.tsx |
-| File | components\ui\searchable-select.tsx |
-| File | components\ui\select.tsx |
-| File | components\ui\separator.tsx |
-| File | components\ui\table.tsx |
-| File | components\ui\tabs.tsx |
-| File | components.json |
-| File | cors.json |
-| File | eslint.config.mjs |
-| File | gcp-service-account.json |
-| Folder | hooks |
-| File | hooks\useRealtimeTest.tsx |
-| File | jest.config.ts |
-| File | jest.setup.ts |
-| Folder | lib |
-| Folder | lib\ai |
-| File | lib\ai\aiDetection.ts |
-| File | lib\ai\extractDSL.ts |
-| File | lib\ai\fallbackDSL.ts |
-| File | lib\ai\fixDSL.ts |
-| File | lib\AMBIGUOUS_ADMIN_LOCATIONS.ts |
-| File | lib\auditLogger.ts |
-| File | lib\auth.ts |
-| Folder | lib\constants |
-| File | lib\constants\config.ts |
-| File | lib\constants\states.ts |
-| Folder | lib\dsl |
-| File | lib\dsl\normalize.ts |
-| File | lib\dsl\relaxDSL.ts |
-| File | lib\dsl\scoreDSL.ts |
-| File | lib\dsl\validateDSL.ts |
-| File | lib\gcpStorage.ts |
-| File | lib\realtimeChannel.ts |
-| File | lib\realtimeChannelLock.ts |
-| File | lib\realtimeSingleton.ts |
-| Folder | lib\rpc |
-| File | lib\rpc\executeSearch.ts |
-| File | lib\rpc\mapDSLToRPC.ts |
-| Folder | lib\services |
-| File | lib\services\geocode.ts |
-| File | lib\services\storage.ts |
-| File | lib\services\supabase.ts |
-| File | lib\supabaseClient.ts |
-| File | lib\supabaseClientAdmin.ts |
-| File | lib\supabaseRealtimeClient.ts |
-| File | lib\supabaseUser.ts |
-| Folder | lib\usecase |
-| File | lib\usecase\aiSearch.ts |
-| File | lib\utils.ts |
-| File | next-env.d.ts |
-| File | next.config.ts |
-| File | package-lock.json |
-| File | package.json |
-| File | postcss.config.mjs |
-| Folder | public |
-| File | public\avatar.jpg |
-| File | public\file.svg |
-| Folder | public\fonts |
-| File | public\fonts\Roboto-Bold.ttf |
-| File | public\fonts\Roboto-Regular.ttf |
-| File | public\globe.svg |
-| File | public\logo.png |
-| File | public\next.svg |
-| File | public\vercel.svg |
-| File | public\window.svg |
-| File | README.md |
-| Folder | scripts |
-| File | scripts\project-structure.js |
-| File | scripts\touch |
-| File | tsconfig.json |
-| Folder | types |
-| File | types\next-auth.d.ts |
-| File | types\react-table.d.ts |
-| Folder | utils |
-| Folder | utils\supabase |
-| File | utils\supabase\client.ts |
-| File | utils\supabase\middleware.ts |
-| File | utils\supabase\server.ts |
-| Folder | __test__ |
-| Folder | __test__\components |
-| Folder | __test__\components\app-components |
-| File | __test__\components\app-components\actionbutton.test.tsx |
-| File | __test__\components\app-components\activeleasecard.test.tsx |
-| File | __test__\components\app-components\aisearchcard.test.tsx |
-| File | __test__\components\app-components\autologout.test.tsx |
-| File | __test__\components\app-components\can.test.tsx |
-| File | __test__\components\app-components\changePasswordModal.test.tsx |
-| File | __test__\components\app-components\contactlistcard.test.tsx |
-| File | __test__\components\app-components\dashboardclient.test.tsx |
-| File | __test__\components\app-components\documentuploadcard.test.tsx |
-| File | __test__\components\app-components\header.test.tsx |
-| File | __test__\components\app-components\headerAdmin.test.tsx |
-| File | __test__\components\app-components\headerManager.test.tsx |
-| File | __test__\components\app-components\leaselistcard.test.tsx |
-| File | __test__\components\app-components\loginpage.test.tsx |
-| File | __test__\components\app-components\ownercontactlistcard.test.tsx |
-| File | __test__\components\app-components\propertycard.test.tsx |
-| File | __test__\components\app-components\propertyimagecarousel.test.tsx |
-| File | __test__\components\app-components\reviewcard.test.tsx |
-| File | __test__\components\app-components\systemlogsactivitiescard.test.tsx |
-| File | __test__\components\app-components\traditionalsearchcard.test.tsx |
-| File | __test__\components\app-components\uploadconfigurationcard.test.tsx |
-| File | __test__\components\app-components\userregistrion.test.tsx |
-| File | __test__\components\app-components\usertable.test.tsx |
-| Folder | __test__\components\ui |
-| File | __test__\components\ui\avatar.test.tsx |
-| File | __test__\components\ui\badge.test.tsx |
-| File | __test__\components\ui\button.test.tsx |
-| File | __test__\components\ui\card.test.tsx |
-| File | __test__\components\ui\carousel.test.tsx |
-| File | __test__\components\ui\command.test.tsx |
-| File | __test__\components\ui\dialog.test.tsx |
-| File | __test__\components\ui\dropdown-menu.test.tsx |
-| File | __test__\components\ui\input.test.tsx |
-| File | __test__\components\ui\label.test.tsx |
-| File | __test__\components\ui\pagination.test.tsx |
-| File | __test__\components\ui\popover.test.tsx |
-| File | __test__\components\ui\searchable-select.test.tsx |
-| File | __test__\components\ui\select.test.tsx |
-| File | __test__\components\ui\separator.test.tsx |
-| File | __test__\components\ui\table.test.tsx |
-| File | __test__\components\ui\tabs.test.tsx |
-| Folder | __test__\integration |
-| Folder | __test__\unit |
-| Folder | __test__\unit\lib |
-| File | __test__\unit\lib\auditLogger.test.ts |
-| File | __test__\unit\lib\gcpStorage.test.ts |
-| File | __test__\unit\lib\supabaseUser.test.ts |
-| File | __test__\unit\lib\utils.test.ts |
-| Folder | __test__\unit\store |
-| File | __test__\unit\store\propertyStore.test.ts |
+|File| .env.local
+|Folder| .git
+|File| .gitignore
+|Folder| .next
+|Folder| .swc
+|Folder| .swc/plugins
+|Folder| .swc/plugins/windows_x86_64_20.0.0
+|Folder| .vscode
+|File| .vscode/settings.json
+|Folder| __test__
+|Folder| __test__/components
+|Folder| __test__/components/app-components
+|File| __test__/components/app-components/actionbutton.test.tsx
+|File| __test__/components/app-components/activeleasecard.test.tsx
+|File| __test__/components/app-components/aisearchcard.test.tsx
+|File| __test__/components/app-components/autologout.test.tsx
+|File| __test__/components/app-components/can.test.tsx
+|File| __test__/components/app-components/changePasswordModal.test.tsx
+|File| __test__/components/app-components/contactlistcard.test.tsx
+|File| __test__/components/app-components/dashboardclient.test.tsx
+|File| __test__/components/app-components/documentuploadcard.test.tsx
+|File| __test__/components/app-components/header.test.tsx
+|File| __test__/components/app-components/headerAdmin.test.tsx
+|File| __test__/components/app-components/headerManager.test.tsx
+|File| __test__/components/app-components/leaselistcard.test.tsx
+|File| __test__/components/app-components/loginpage.test.tsx
+|File| __test__/components/app-components/ownercontactlistcard.test.tsx
+|File| __test__/components/app-components/propertycard.test.tsx
+|File| __test__/components/app-components/propertyimagecarousel.test.tsx
+|File| __test__/components/app-components/reviewcard.test.tsx
+|File| __test__/components/app-components/systemlogsactivitiescard.test.tsx
+|File| __test__/components/app-components/traditionalsearchcard.test.tsx
+|File| __test__/components/app-components/uploadconfigurationcard.test.tsx
+|File| __test__/components/app-components/userregistrion.test.tsx
+|File| __test__/components/app-components/usertable.test.tsx
+|Folder| __test__/components/ui
+|File| __test__/components/ui/avatar.test.tsx
+|File| __test__/components/ui/badge.test.tsx
+|File| __test__/components/ui/button.test.tsx
+|File| __test__/components/ui/card.test.tsx
+|File| __test__/components/ui/carousel.test.tsx
+|File| __test__/components/ui/command.test.tsx
+|File| __test__/components/ui/dialog.test.tsx
+|File| __test__/components/ui/dropdown-menu.test.tsx
+|File| __test__/components/ui/input.test.tsx
+|File| __test__/components/ui/label.test.tsx
+|File| __test__/components/ui/pagination.test.tsx
+|File| __test__/components/ui/popover.test.tsx
+|File| __test__/components/ui/searchable-select.test.tsx
+|File| __test__/components/ui/select.test.tsx
+|File| __test__/components/ui/separator.test.tsx
+|File| __test__/components/ui/table.test.tsx
+|File| __test__/components/ui/tabs.test.tsx
+|Folder| __test__/integration
+|Folder| __test__/unit
+|Folder| __test__/unit/lib
+|File| __test__/unit/lib/auditLogger.test.ts
+|File| __test__/unit/lib/gcpStorage.test.ts
+|File| __test__/unit/lib/supabaseUser.test.ts
+|File| __test__/unit/lib/utils.test.ts
+|Folder| __test__/unit/store
+|File| __test__/unit/store/propertyStore.test.ts
+|Folder| app
+|Folder| app/(auth)
+|Folder| app/(auth)/dashboard
+|Folder| app/(auth)/dashboard/audit-trail
+|File| app/(auth)/dashboard/audit-trail/page.tsx
+|Folder| app/(auth)/dashboard/contact
+|Folder| app/(auth)/dashboard/contact/add
+|File| app/(auth)/dashboard/contact/add/page.tsx
+|Folder| app/(auth)/dashboard/contact/edit
+|File| app/(auth)/dashboard/contact/edit/page.tsx
+|File| app/(auth)/dashboard/contact/page.tsx
+|Folder| app/(auth)/dashboard/documents
+|File| app/(auth)/dashboard/documents/page.tsx
+|Folder| app/(auth)/dashboard/errormonitoring
+|Folder| app/(auth)/dashboard/errormonitoring/[id]
+|File| app/(auth)/dashboard/errormonitoring/[id]/page.tsx
+|File| app/(auth)/dashboard/errormonitoring/page.tsx
+|Folder| app/(auth)/dashboard/leases
+|Folder| app/(auth)/dashboard/leases/[id]
+|File| app/(auth)/dashboard/leases/[id]/page.tsx
+|File| app/(auth)/dashboard/leases/page.tsx
+|Folder| app/(auth)/dashboard/main
+|File| app/(auth)/dashboard/main/page.tsx
+|Folder| app/(auth)/dashboard/owner-contact
+|File| app/(auth)/dashboard/owner-contact/page.tsx
+|Folder| app/(auth)/dashboard/properties
+|Folder| app/(auth)/dashboard/properties/[id]
+|File| app/(auth)/dashboard/properties/[id]/page.tsx
+|File| app/(auth)/dashboard/properties/page.tsx
+|Folder| app/(auth)/dashboard/review
+|Folder| app/(auth)/dashboard/review/[id]
+|File| app/(auth)/dashboard/review/[id]/page.tsx
+|File| app/(auth)/dashboard/review/page.tsx
+|Folder| app/(auth)/dashboard/users
+|Folder| app/(auth)/dashboard/users/add
+|File| app/(auth)/dashboard/users/add/page.tsx
+|Folder| app/(auth)/dashboard/users/edit
+|File| app/(auth)/dashboard/users/edit/page.tsx
+|File| app/(auth)/dashboard/users/page.tsx
+|Folder| app/(auth)/dashboard/users/profile
+|File| app/(auth)/dashboard/users/profile/page.tsx
+|File| app/(auth)/layout.tsx
+|Folder| app/api
+|Folder| app/api/aisearch
+|File| app/api/aisearch/route.ts
+|Folder| app/api/audit-trail
+|Folder| app/api/audit-trail/export
+|File| app/api/audit-trail/export/route.ts
+|File| app/api/audit-trail/route.ts
+|Folder| app/api/auth
+|Folder| app/api/auth/[...nextauth]
+|File| app/api/auth/[...nextauth]/route.ts
+|Folder| app/api/auth/update-status-offline
+|File| app/api/auth/update-status-offline/route.ts
+|Folder| app/api/auth/update-status-online
+|File| app/api/auth/update-status-online/route.ts
+|Folder| app/api/check-duplicate
+|Folder| app/api/check-duplicate/lease
+|File| app/api/check-duplicate/lease/route.ts
+|Folder| app/api/check-duplicate/property
+|File| app/api/check-duplicate/property/route.ts
+|Folder| app/api/contacts
+|Folder| app/api/contacts/[id]
+|File| app/api/contacts/[id]/route.ts
+|Folder| app/api/contacts/count
+|File| app/api/contacts/count/route.ts
+|Folder| app/api/contacts/lease_list
+|File| app/api/contacts/lease_list/route.ts
+|Folder| app/api/contacts/property_list
+|File| app/api/contacts/property_list/route.ts
+|File| app/api/contacts/route.ts
+|Folder| app/api/dashboard
+|Folder| app/api/dashboard/_utils
+|File| app/api/dashboard/_utils.ts
+|File| app/api/dashboard/_utils/_template.ts
+|File| app/api/dashboard/_utils/supabaseRls.ts
+|Folder| app/api/dashboard/document-status
+|File| app/api/dashboard/document-status/route.ts
+|Folder| app/api/dashboard/document-type
+|File| app/api/dashboard/document-type/route.ts
+|Folder| app/api/dashboard/export
+|File| app/api/dashboard/export/route.ts
+|Folder| app/api/dashboard/income-property
+|File| app/api/dashboard/income-property/route.ts
+|Folder| app/api/dashboard/income-trend
+|File| app/api/dashboard/income-trend/route.ts
+|Folder| app/api/dashboard/kpi
+|File| app/api/dashboard/kpi/route.ts
+|Folder| app/api/dashboard/lease-expiration
+|File| app/api/dashboard/lease-expiration/route.ts
+|Folder| app/api/dashboard/lease-status
+|File| app/api/dashboard/lease-status/route.ts
+|Folder| app/api/dashboard/properties-city
+|File| app/api/dashboard/properties-city/route.ts
+|Folder| app/api/dashboard/properties-state
+|File| app/api/dashboard/properties-state/route.ts
+|File| app/api/dashboard/route.ts
+|Folder| app/api/debug
+|Folder| app/api/debug/env
+|File| app/api/debug/env/route.ts
+|Folder| app/api/debug/jwt
+|File| app/api/debug/jwt/route.ts
+|Folder| app/api/debug/models
+|File| app/api/debug/models/route.ts
+|Folder| app/api/document
+|Folder| app/api/document/count
+|File| app/api/document/count/route.ts
+|File| app/api/document/route.ts
+|Folder| app/api/embed-all
+|File| app/api/embed-all/route.ts
+|Folder| app/api/errormonitoring
+|Folder| app/api/errormonitoring/[id]
+|File| app/api/errormonitoring/[id]/route.ts
+|Folder| app/api/errormonitoring/count
+|File| app/api/errormonitoring/count/route.ts
+|File| app/api/errormonitoring/route.ts
+|Folder| app/api/force-logout
+|File| app/api/force-logout/route.ts
+|Folder| app/api/gcp
+|Folder| app/api/gcp/archived-document
+|Folder| app/api/gcp/archived-document/[id]
+|File| app/api/gcp/archived-document/[id]/route.ts
+|Folder| app/api/gcp/download
+|File| app/api/gcp/download/route.ts
+|Folder| app/api/gcp/getSignedUrl
+|File| app/api/gcp/getSignedUrl/route.ts
+|Folder| app/api/lease
+|Folder| app/api/lease/[id]
+|File| app/api/lease/[id]/route.ts
+|Folder| app/api/lease/[id]/schedule
+|Folder| app/api/lease/[id]/schedule/[scheduleId]
+|File| app/api/lease/[id]/schedule/[scheduleId]/route.ts
+|File| app/api/lease/[id]/schedule/route.ts
+|Folder| app/api/lease/active
+|File| app/api/lease/active/route.ts
+|Folder| app/api/lease/count
+|File| app/api/lease/count/route.ts
+|Folder| app/api/lease/count-status
+|File| app/api/lease/count-status/route.ts
+|File| app/api/lease/route.ts
+|Folder| app/api/owner-contacts
+|File| app/api/owner-contacts/route.ts
+|Folder| app/api/properties
+|Folder| app/api/properties/[id]
+|File| app/api/properties/[id]/route.ts
+|Folder| app/api/properties/broker
+|Folder| app/api/properties/broker/[id]
+|File| app/api/properties/broker/[id]/route.ts
+|File| app/api/properties/broker/route.ts
+|Folder| app/api/properties/count
+|File| app/api/properties/count/route.ts
+|Folder| app/api/properties/list
+|File| app/api/properties/list/route.ts
+|Folder| app/api/properties/list-2
+|File| app/api/properties/list-2/route.ts
+|Folder| app/api/properties/rent-schedule
+|Folder| app/api/properties/rent-schedule/[id]
+|File| app/api/properties/rent-schedule/[id]/route.ts
+|File| app/api/properties/rent-schedule/route.ts
+|File| app/api/properties/route.ts
+|Folder| app/api/properties/status
+|File| app/api/properties/status/route.ts
+|Folder| app/api/properties/type
+|File| app/api/properties/type/route.ts
+|Folder| app/api/properties/update-status
+|File| app/api/properties/update-status/route.ts
+|Folder| app/api/realtime-token
+|File| app/api/realtime-token/route.ts
+|Folder| app/api/review
+|Folder| app/api/review/action
+|File| app/api/review/action/route.ts
+|Folder| app/api/review/count
+|File| app/api/review/count/route.ts
+|File| app/api/review/route.ts
+|Folder| app/api/test
+|File| app/api/test/route.ts
+|Folder| app/api/test/vertex-test
+|File| app/api/test/vertex-test/route.ts
+|Folder| app/api/upload
+|Folder| app/api/upload/document
+|Folder| app/api/upload/document/confirm
+|File| app/api/upload/document/confirm/route.ts
+|File| app/api/upload/document/route.ts
+|Folder| app/api/upload/precheck
+|File| app/api/upload/precheck/route.ts
+|Folder| app/api/upload/profile
+|File| app/api/upload/profile/route.ts
+|Folder| app/api/users
+|Folder| app/api/users/[id]
+|Folder| app/api/users/[id]/force-logout
+|File| app/api/users/[id]/force-logout/route.ts
+|File| app/api/users/[id]/route.ts
+|Folder| app/api/users/check-username
+|File| app/api/users/check-username/route.ts
+|Folder| app/api/users/count
+|File| app/api/users/count/route.ts
+|Folder| app/api/users/force-logout
+|File| app/api/users/force-logout/route.ts
+|Folder| app/api/users/list
+|File| app/api/users/list/route.ts
+|Folder| app/api/users/managers
+|File| app/api/users/managers/route.ts
+|Folder| app/api/users/profile
+|Folder| app/api/users/profile/change-password
+|File| app/api/users/profile/change-password/route.ts
+|File| app/api/users/profile/route.ts
+|Folder| app/api/users/profile/update
+|File| app/api/users/profile/update/route.ts
+|File| app/api/users/route.ts
+|Folder| app/components
+|File| app/components/actionbuttoncard.tsx
+|File| app/components/activeleasescard.tsx
+|File| app/components/aisearchcard.tsx
+|File| app/components/autologout.tsx
+|File| app/components/can.tsx
+|File| app/components/changePasswordModal.tsx
+|File| app/components/contactlistcard.tsx
+|File| app/components/contactregistration.tsx
+|File| app/components/dashboardclient.tsx
+|Folder| app/components/dashboards
+|Folder| app/components/dashboards/_utils
+|File| app/components/dashboards/_utils/useDashboardFetch.ts
+|File| app/components/dashboards/_utils/useDashboardFilters.ts
+|File| app/components/dashboards/documentsbytypechart.tsx
+|File| app/components/dashboards/documentstatuschart.tsx
+|File| app/components/dashboards/incomebypropertytable.tsx
+|File| app/components/dashboards/incometrendchart.tsx
+|File| app/components/dashboards/kpigroup.tsx
+|File| app/components/dashboards/leaseexpirationchart.tsx
+|File| app/components/dashboards/leasestatuschart.tsx
+|File| app/components/dashboards/propertiesbycitychart.tsx
+|File| app/components/dashboards/propertiesbystatechart.tsx
+|File| app/components/documentlist.tsx
+|File| app/components/documentuploadcard.tsx
+|File| app/components/errormonitoringcard.tsx
+|File| app/components/header.tsx
+|File| app/components/headerAdmin.tsx
+|File| app/components/headerManager.tsx
+|File| app/components/leaselistcard.tsx
+|File| app/components/loginpage.tsx
+|File| app/components/ownercontactlistcard.tsx
+|File| app/components/propertycard.tsx
+|File| app/components/propertyimagecarousel.tsx
+|File| app/components/reviewcard.tsx
+|File| app/components/ScrollableTable.tsx
+|File| app/components/systemlogsactivitiescard.tsx
+|File| app/components/traditionalsearchcard.tsx
+|File| app/components/uploadconfigurationcard.tsx
+|File| app/components/userregistrion.tsx
+|File| app/components/usertable.tsx
+|File| app/favicon.ico
+|File| app/globals.css
+|File| app/layout.tsx
+|Folder| app/login
+|File| app/login/page.tsx
+|File| app/page.tsx
+|File| app/provider.tsx
+|File| app/session-provider-wrapper.tsx
+|Folder| app/store
+|File| app/store/propertyStore.tsx
+|Folder| components
+|File| components.json
+|Folder| components/ui
+|File| components/ui/avatar.tsx
+|File| components/ui/badge.tsx
+|File| components/ui/button.tsx
+|File| components/ui/card.tsx
+|File| components/ui/carousel.tsx
+|File| components/ui/command.tsx
+|File| components/ui/dialog.tsx
+|File| components/ui/dropdown-menu.tsx
+|File| components/ui/input.tsx
+|File| components/ui/label.tsx
+|File| components/ui/pagination.tsx
+|File| components/ui/popover.tsx
+|File| components/ui/searchable-select.tsx
+|File| components/ui/select.tsx
+|File| components/ui/separator.tsx
+|File| components/ui/table.tsx
+|File| components/ui/tabs.tsx
+|File| components/ui/tooltip.tsx
+|File| cors.json
+|File| eslint.config.mjs
+|File| gcp-service-account.json
+|Folder| hooks
+|File| hooks/useRealtimeTest.tsx
+|File| jest.config.ts
+|File| jest.setup.ts
+|Folder| lib
+|Folder| lib/ai
+|File| lib/ai/aiDetection.ts
+|File| lib/ai/extractDSL.ts
+|File| lib/ai/fallbackDSL.ts
+|File| lib/ai/fixDSL.ts
+|File| lib/AMBIGUOUS_ADMIN_LOCATIONS.ts
+|File| lib/auditLogger.ts
+|File| lib/auth.ts
+|Folder| lib/constants
+|File| lib/constants/config.ts
+|File| lib/constants/states.ts
+|Folder| lib/dsl
+|File| lib/dsl/normalize.ts
+|File| lib/dsl/relaxDSL.ts
+|File| lib/dsl/scoreDSL.ts
+|File| lib/dsl/validateDSL.ts
+|File| lib/gcpStorage.ts
+|File| lib/realtimeChannel.ts
+|File| lib/realtimeChannelLock.ts
+|File| lib/realtimeSingleton.ts
+|Folder| lib/rpc
+|File| lib/rpc/executeSearch.ts
+|File| lib/rpc/mapDSLToRPC.ts
+|Folder| lib/services
+|File| lib/services/geocode.ts
+|File| lib/services/storage.ts
+|File| lib/services/supabase.ts
+|File| lib/supabaseClient.ts
+|File| lib/supabaseClientAdmin.ts
+|File| lib/supabaseRealtimeClient.ts
+|File| lib/supabaseUser.ts
+|Folder| lib/usecase
+|File| lib/usecase/aiSearch.ts
+|File| lib/utils.ts
+|File| next.config.ts
+|File| next-env.d.ts
+|Folder| node_modules
+|File| package.json
+|File| package-lock.json
+|File| postcss.config.mjs
+|File| PROJECT_STRUCTURE.md
+|Folder| public
+|File| public/avatar.jpg
+|File| public/file.svg
+|Folder| public/fonts
+|File| public/fonts/Roboto-Bold.ttf
+|File| public/fonts/Roboto-Regular.ttf
+|File| public/globe.svg
+|File| public/logo.png
+|File| public/next.svg
+|File| public/vercel.svg
+|File| public/window.svg
+|File| README.md
+|Folder| scripts
+|File| scripts/project-structure.js
+|File| scripts/touch
+|File| tsconfig.json
+|Folder| types
+|File| types/next-auth.d.ts
+|File| types/react-table.d.ts
+|Folder| utils
+|Folder| utils/supabase
+|File| utils/supabase/client.ts
+|File| utils/supabase/middleware.ts
+|File| utils/supabase/server.ts
