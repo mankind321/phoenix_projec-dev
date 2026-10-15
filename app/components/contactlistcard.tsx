@@ -56,6 +56,7 @@ import { Can } from "./can";
 
 /* ------------------ TYPE ---------------------- */
 interface Contact {
+   id: string; // Unique row key from the Supabase view
   contact_id: string;
   unique_id: string;
   user_id: string;
@@ -363,7 +364,9 @@ export default function ContactTable() {
   }, []);
 
   const handleBulkDelete = async () => {
-    const selectedIds = Object.keys(rowSelection);
+    const selectedIds = table
+      .getSelectedRowModel()
+      .rows.map((row) => row.original.contact_id);
 
     if (!selectedIds.length) {
       toast.error("Please select at least one contact.");
@@ -459,7 +462,7 @@ export default function ContactTable() {
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
-    getRowId: (row) => row.contact_id, // ✅ ADD THIS
+    getRowId: (row) => row.id,
   });
 
   /* ------------------ RENDER ---------------------- */

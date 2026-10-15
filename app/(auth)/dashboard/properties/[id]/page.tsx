@@ -1075,7 +1075,15 @@ export default function PropertyViewPage({
                 <TableBody>
                   {leases.active.map((lease) => (
                     <TableRow key={lease.lease_id}>
-                      <TableCell>{display(lease.tenant)}</TableCell>
+                      <TableCell>
+                        {(() => {
+                          const tenant = display(lease.tenant);
+
+                          return typeof tenant === "string"
+                            ? tenant.replace(/''/g, "'").replace(/"/g, "'")
+                            : tenant;
+                        })()}
+                      </TableCell>
 
                       <TableCell>{display(lease.suite_unit)}</TableCell>
                       <TableCell className="text-right pr-10">
@@ -1093,7 +1101,9 @@ export default function PropertyViewPage({
                               ? "bg-green-100 text-green-700 hover:bg-green-100"
                               : lease.status === "Available"
                                 ? "bg-blue-100 text-blue-700 hover:bg-blue-100"
-                                : "bg-red-100 text-red-700 hover:bg-red-100"
+                                : lease.status === "Vacant"
+                                  ? "bg-gray-100 text-gray-700 hover:bg-gray-100"
+                                  : "bg-red-100 text-red-700 hover:bg-red-100"
                           }
                         >
                           {lease.status}

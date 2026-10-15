@@ -94,7 +94,8 @@ export async function GET(req: Request) {
         updated_by,
         updatedbyuser,
         created_at,
-        updated_at
+        updated_at,
+        id
         `,
         { count: "exact" },
       )
@@ -102,9 +103,11 @@ export async function GET(req: Request) {
       .range(offset, offset + pageSize - 1);
 
     // Search filter
+
+    // Search by Broker Name or Listing Company
     if (search) {
       query = query.or(
-        `broker_name.ilike.%${search}%,listing_company.ilike.%${search}%,email.ilike.%${search}%,phone.ilike.%${search}%,property_name.ilike.%${search}%`,
+        `broker_name.ilike.%${search}%,listing_company.ilike.%${search}%`
       );
     }
 

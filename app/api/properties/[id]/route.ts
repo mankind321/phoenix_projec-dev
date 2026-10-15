@@ -112,9 +112,6 @@ export async function GET(
     // ----------------------------------------------
     // 5️⃣ Fetch leases
     // ----------------------------------------------
-    // ----------------------------------------------
-    // 5️⃣ Fetch leases
-    // ----------------------------------------------
     const [{ data: activeLeases }, { data: expiredLeases }] = await Promise.all(
       [
         supabase
@@ -131,6 +128,7 @@ export async function GET(
               "status.ilike.ongoing",
               "status.ilike.leased",
               "status.ilike.available",
+              "status.ilike.vacant"
             ].join(","),
           )
           .order("lease_start", { ascending: false }),
