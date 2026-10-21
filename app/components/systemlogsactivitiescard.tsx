@@ -107,7 +107,7 @@ export default function AuditTrailDashboard() {
     setToDate(toDateInput);
     setPage(1);
   };
-
+  
   const clearFilters = () => {
     setSearch("");
     setActionFilter("all");
@@ -125,7 +125,7 @@ export default function AuditTrailDashboard() {
     setPage(1);
   };
 
-  async function loadData() {
+  /**async function loadData() {
     const res = await fetch(`/api/audit-trail?page=1`, {
       headers: {
         Authorization: `Bearer ${session?.user?.supabaseAccessToken}`,
@@ -133,7 +133,7 @@ export default function AuditTrailDashboard() {
     });
     return res;
   }
-  loadData().then(console.log);
+  loadData().then(console.log);*/
 
   const applyDatePreset = (preset: string) => {
     const today = new Date();
@@ -277,22 +277,24 @@ export default function AuditTrailDashboard() {
           {session?.user?.role !== "Agent" && (
             <div>
               <p className="text-sm font-medium text-gray-600 mb-1">User</p>
+
               <Select value={userInput} onValueChange={setUserInput}>
                 <SelectTrigger>
                   <SelectValue placeholder="All Users" />
                 </SelectTrigger>
+
                 <SelectContent>
                   <SelectItem value="all">All Users</SelectItem>
+
                   {users.map((u) => (
                     <SelectItem key={u.userId} value={String(u.userId)}>
-                      {u.fullName + ` - ` + u.role || u.username + ` - ` + u.role}
+                      {u.fullName?.trim() || u.username} - {u.role}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
           )}
-
           {/* Export */}
           <div className="flex items-end justify-end">
             <Button
